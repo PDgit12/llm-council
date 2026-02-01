@@ -227,7 +227,28 @@ async def debug_openrouter():
     try:
         from openai import AsyncOpenAI
     except ImportError as e:
-        return {"status": "error", "message": f"Failed to import openai: {str(e)}"}
+        import subprocess
+        try:
+            installed_packages = subprocess.check_output([sys.executable, "-m", "pip", "list"]).decode()
+        except Exception as pip_err:
+            installed_packages = f"Failed to list packages: {str(pip_err)}"
+            
+        try:
+            current_files = os.listdir(".")
+        except Exception as fs_err:
+            current_files = f"Failed to list files: {str(fs_err)}"
+            
+        return {
+            "status": "error", 
+            "message": f"Failed to import openai: {str(e)}",
+            "debug_info": {
+                "sys_path": sys.path,
+                "sys_executable": sys.executable,
+                "current_working_directory": os.getcwd(),
+                "directory_contents": current_files,
+                "installed_packages": installed_packages
+            }
+        }
 
     try:
         api_key = os.getenv("OPENROUTER_API_KEY")
