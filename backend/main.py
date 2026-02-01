@@ -213,6 +213,10 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     )
 
 
+@app.get("/")
+async def root():
+    return {"message": "LLM Council Backend is Running"}
+
 @app.get("/debug/openrouter")
 async def debug_openrouter():
     """Test OpenRouter connection and return result."""
