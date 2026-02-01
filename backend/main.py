@@ -213,6 +213,39 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     )
 
 
+@app.get("/debug/openrouter")
+async def debug_openrouter():
+    """Test OpenRouter connection and return result."""
+    import os
+    from openai import AsyncOpenAI
+    
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        return {"status": "error", "message": "OPENROUTER_API_KEY not found in environment"}
+    
+    client = AsyncOpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
+    )
+    
+    try:
+        completion = await client.chat.completions.create(
+            extra_headers={
+                "HTTP-Referer": "https://llm-council.vercel.app",
+                "X-Title": "LLM Council Debug",
+            },
+            model="google/gemini-2.0-flash-lite-preview-02-05:free",
+            messages=[{"role": "user", "content": "Say hello"}]
+        )
+        return {
+            "status": "success", 
+            "response": completion.choices[0].message.content,
+            "key_length": len(api_key),
+            "key_prefix": api_key[:5]
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e), "type": type(e).__name__}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
