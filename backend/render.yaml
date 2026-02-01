@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: llm-council-backend
+    env: python
+    buildCommand: pip install uv && uv pip install -r requirements.txt
+    startCommand: uv run uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.12
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+    disk:
+      name: data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
