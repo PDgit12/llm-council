@@ -217,22 +217,33 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 async def root():
     return {"message": "LLM Council Backend is Running"}
 
+
 @app.get("/debug/openrouter")
 async def debug_openrouter():
     """Test OpenRouter connection and return result."""
     import os
-    from openai import AsyncOpenAI
-    
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        return {"status": "error", "message": "OPENROUTER_API_KEY not found in environment"}
-    
-    client = AsyncOpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=api_key,
-    )
+    import sys
     
     try:
+        from openai import AsyncOpenAI
+    except ImportError as e:
+        return {"status": "error", "message": f"Failed to import openai: {str(e)}"}
+
+    try:
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        # Check if key exists and has content
+        if not api_key:
+            return {
+                "status": "error", 
+                "message": "OPENROUTER_API_KEY is missing or empty",
+                "env_vars_present": list(os.environ.keys())
+            }
+        
+        client = AsyncOpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key,
+        )
+        
         completion = await client.chat.completions.create(
             extra_headers={
                 "HTTP-Referer": "https://llm-council.vercel.app",
@@ -245,10 +256,17 @@ async def debug_openrouter():
             "status": "success", 
             "response": completion.choices[0].message.content,
             "key_length": len(api_key),
-            "key_prefix": api_key[:5]
+            "key_prefix": api_key[:5] if len(api_key) > 5 else "SHORT",
+            "python_version": sys.version
         }
     except Exception as e:
-        return {"status": "error", "message": str(e), "type": type(e).__name__}
+        import traceback
+        return {
+            "status": "error", 
+            "message": str(e), 
+            "type": type(e).__name__,
+            "traceback": traceback.format_exc()
+        }
 
 if __name__ == "__main__":
     import uvicorn
