@@ -1,7 +1,5 @@
 # Lightning LLM Council
 
-![llmcouncil](header.jpg)
-
 **Lightning LLM Council** is a high-speed, 3-stage deliberation engine that uses a "Council of LLMs" to produce high-density, vetted responses. Instead of asking a single model, you get a consensus-driven answer that has been peer-reviewed and synthesized by multiple providers.
 
 ### Key Features
