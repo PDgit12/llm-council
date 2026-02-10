@@ -1,110 +1,105 @@
-"""JSON-based storage for conversations."""
+"""Firebase Firestore storage for conversations."""
 
 import json
 import os
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from pathlib import Path
-from config import DATA_DIR
+import firebase_admin
+from firebase_admin import credentials, firestore
+from config import FIREBASE_SERVICE_ACCOUNT, FIREBASE_PROJECT_ID
 
+# Initialize Firebase
+db = None
 
-def ensure_data_dir():
-    """Ensure the data directory exists."""
-    Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
+def init_firebase():
+    """Initialize Firebase Admin SDK."""
+    global db
+    if db is not None:
+        return db
 
+    try:
+        if FIREBASE_SERVICE_ACCOUNT:
+            if os.path.exists(FIREBASE_SERVICE_ACCOUNT):
+                cred = credentials.Certificate(FIREBASE_SERVICE_ACCOUNT)
+            else:
+                # Assume it's stringified JSON
+                cred_json = json.loads(FIREBASE_SERVICE_ACCOUNT)
+                cred = credentials.Certificate(cred_json)
+            
+            firebase_admin.initialize_app(cred, {
+                'projectId': FIREBASE_PROJECT_ID
+            })
+        else:
+            # Try default credentials (ADC)
+            firebase_admin.initialize_app()
+        
+        db = firestore.client()
+        print("Firebase initialized successfully.")
+        return db
+    except Exception as e:
+        print(f"Failed to initialize Firebase: {e}")
+        return None
 
-def get_conversation_path(conversation_id: str) -> str:
-    """Get the file path for a conversation."""
-    return os.path.join(DATA_DIR, f"{conversation_id}.json")
+# Always try to init on import
+init_firebase()
 
 
 def create_conversation(conversation_id: str) -> Dict[str, Any]:
-    """
-    Create a new conversation.
-
-    Args:
-        conversation_id: Unique identifier for the conversation
-
-    Returns:
-        New conversation dict
-    """
-    ensure_data_dir()
+    """Create a new conversation in Firestore."""
+    if db is None:
+        raise RuntimeError("Firebase not initialized")
 
     conversation = {
         "id": conversation_id,
         "created_at": datetime.utcnow().isoformat(),
         "title": "New Task",
         "messages": [],
-        "test_cases": []  # Added for Prompt Lab
+        "test_cases": []
     }
 
-    # Save to file
-    path = get_conversation_path(conversation_id)
-    with open(path, 'w') as f:
-        json.dump(conversation, f, indent=2)
-
+    db.collection("conversations").document(conversation_id).set(conversation)
     return conversation
 
 
 def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Load a conversation from storage.
-
-    Args:
-        conversation_id: Unique identifier for the conversation
-
-    Returns:
-        Conversation dict or None if not found
-    """
-    path = get_conversation_path(conversation_id)
-
-    if not os.path.exists(path):
+    """Load a conversation from Firestore."""
+    if db is None:
         return None
 
-    with open(path, 'r') as f:
-        return json.load(f)
+    doc = db.collection("conversations").document(conversation_id).get()
+    if doc.exists:
+        return doc.to_dict()
+    return None
 
 
 def save_conversation(conversation: Dict[str, Any]):
-    """
-    Save a conversation to storage.
+    """Save a conversation to Firestore."""
+    if db is None:
+        return
 
-    Args:
-        conversation: Conversation dict to save
-    """
-    ensure_data_dir()
-
-    path = get_conversation_path(conversation['id'])
-    with open(path, 'w') as f:
-        json.dump(conversation, f, indent=2)
+    db.collection("conversations").document(conversation['id']).update(conversation)
 
 
 def list_conversations() -> List[Dict[str, Any]]:
-    """
-    List all conversations (metadata only).
-
-    Returns:
-        List of conversation metadata dicts
-    """
-    ensure_data_dir()
+    """List all conversations from Firestore (metadata only)."""
+    if db is None:
+        return []
 
     conversations = []
-    for filename in os.listdir(DATA_DIR):
-        if filename.endswith('.json'):
-            path = os.path.join(DATA_DIR, filename)
-            with open(path, 'r') as f:
-                data = json.load(f)
-                # Return metadata only
-                conversations.append({
-                    "id": data["id"],
-                    "created_at": data["created_at"],
-                    "title": data.get("title", "New Conversation"),
-                    "message_count": len(data["messages"])
-                })
+    # Fetch all docs, but ideally we'd use pagination if there are many
+    docs = db.collection("conversations").stream()
+    
+    for doc in docs:
+        data = doc.to_dict()
+        conversations.append({
+            "id": data["id"],
+            "created_at": data["created_at"],
+            "title": data.get("title", "New Task"),
+            "message_count": len(data.get("messages", []))
+        })
 
     # Sort by creation time, newest first
     conversations.sort(key=lambda x: x["created_at"], reverse=True)
-
     return conversations
 
 
@@ -113,14 +108,7 @@ def add_user_message(
     content: str, 
     attachments: Optional[List[Dict[str, Any]]] = None
 ):
-    """
-    Add a user message to a conversation.
-
-    Args:
-        conversation_id: Conversation identifier
-        content: User message content
-        attachments: Optional list of file attachments
-    """
+    """Add a user message to a conversation."""
     conversation = get_conversation(conversation_id)
     if conversation is None:
         raise ValueError(f"Conversation {conversation_id} not found")
@@ -133,8 +121,10 @@ def add_user_message(
     if attachments:
         message["attachments"] = attachments
 
+    if "messages" not in conversation:
+        conversation["messages"] = []
+        
     conversation["messages"].append(message)
-
     save_conversation(conversation)
 
 
@@ -144,18 +134,13 @@ def add_assistant_message(
     stage2: List[Dict[str, Any]],
     stage3: Dict[str, Any]
 ):
-    """
-    Add an assistant message with all 3 stages to a conversation.
-
-    Args:
-        conversation_id: Conversation identifier
-        stage1: List of individual model responses
-        stage2: List of model rankings
-        stage3: Final synthesized response
-    """
+    """Add an assistant message with all 3 stages."""
     conversation = get_conversation(conversation_id)
     if conversation is None:
         raise ValueError(f"Conversation {conversation_id} not found")
+
+    if "messages" not in conversation:
+        conversation["messages"] = []
 
     conversation["messages"].append({
         "role": "assistant",
@@ -168,19 +153,11 @@ def add_assistant_message(
 
 
 def update_conversation_title(conversation_id: str, title: str):
-    """
-    Update the title of a conversation.
+    """Update the title of a conversation."""
+    if db is None:
+        return
 
-    Args:
-        conversation_id: Conversation identifier
-        title: New title for the conversation
-    """
-    conversation = get_conversation(conversation_id)
-    if conversation is None:
-        raise ValueError(f"Conversation {conversation_id} not found")
-
-    conversation["title"] = title
-    save_conversation(conversation)
+    db.collection("conversations").document(conversation_id).update({"title": title})
 
 
 def add_test_case(conversation_id: str, input_data: str, expected_output: str) -> Dict[str, Any]:
@@ -230,17 +207,9 @@ def get_test_cases(conversation_id: str) -> List[Dict[str, Any]]:
 
 
 def delete_conversation(conversation_id: str) -> bool:
-    """
-    Delete a conversation from storage.
+    """Delete a conversation from Firestore."""
+    if db is None:
+        return False
 
-    Args:
-        conversation_id: Unique identifier for the conversation
-
-    Returns:
-        True if deleted, False if not found
-    """
-    path = get_conversation_path(conversation_id)
-    if os.path.exists(path):
-        os.remove(path)
-        return True
-    return False
+    db.collection("conversations").document(conversation_id).delete()
+    return True

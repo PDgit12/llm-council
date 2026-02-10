@@ -39,3 +39,7 @@ OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Data directory for conversation storage
 DATA_DIR = "data/conversations"
+
+# Firebase Cloud Storage
+FIREBASE_SERVICE_ACCOUNT = os.getenv("FIREBASE_SERVICE_ACCOUNT")
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID")

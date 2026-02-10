@@ -7,3 +7,4 @@ google-generativeai
 pydantic
 python-multipart
 Pillow
+firebase-admin
