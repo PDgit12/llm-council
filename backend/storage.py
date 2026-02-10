@@ -33,8 +33,9 @@ def create_conversation(conversation_id: str) -> Dict[str, Any]:
     conversation = {
         "id": conversation_id,
         "created_at": datetime.utcnow().isoformat(),
-        "title": "New Conversation",
-        "messages": []
+        "title": "New Task",
+        "messages": [],
+        "test_cases": []  # Added for Prompt Lab
     }
 
     # Save to file
@@ -107,22 +108,32 @@ def list_conversations() -> List[Dict[str, Any]]:
     return conversations
 
 
-def add_user_message(conversation_id: str, content: str):
+def add_user_message(
+    conversation_id: str, 
+    content: str, 
+    attachments: Optional[List[Dict[str, Any]]] = None
+):
     """
     Add a user message to a conversation.
 
     Args:
         conversation_id: Conversation identifier
         content: User message content
+        attachments: Optional list of file attachments
     """
     conversation = get_conversation(conversation_id)
     if conversation is None:
         raise ValueError(f"Conversation {conversation_id} not found")
 
-    conversation["messages"].append({
+    message = {
         "role": "user",
         "content": content
-    })
+    }
+    
+    if attachments:
+        message["attachments"] = attachments
+
+    conversation["messages"].append(message)
 
     save_conversation(conversation)
 
@@ -170,6 +181,52 @@ def update_conversation_title(conversation_id: str, title: str):
 
     conversation["title"] = title
     save_conversation(conversation)
+
+
+def add_test_case(conversation_id: str, input_data: str, expected_output: str) -> Dict[str, Any]:
+    """Add a test case to a conversation."""
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+    
+    test_case = {
+        "id": str(datetime.now().timestamp()).replace('.', ''),
+        "input": input_data,
+        "expected": expected_output
+    }
+    
+    if "test_cases" not in conversation:
+        conversation["test_cases"] = []
+    
+    conversation["test_cases"].append(test_case)
+    save_conversation(conversation)
+    return test_case
+
+
+def delete_test_case(conversation_id: str, test_case_id: str) -> bool:
+    """Delete a test case from a conversation."""
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        return False
+    
+    if "test_cases" not in conversation:
+        return False
+    
+    initial_len = len(conversation["test_cases"])
+    conversation["test_cases"] = [tc for tc in conversation["test_cases"] if tc["id"] != test_case_id]
+    
+    if len(conversation["test_cases"]) < initial_len:
+        save_conversation(conversation)
+        return True
+    return False
+
+
+def get_test_cases(conversation_id: str) -> List[Dict[str, Any]]:
+    """Get all test cases for a conversation."""
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        return []
+    return conversation.get("test_cases", [])
 
 
 def delete_conversation(conversation_id: str) -> bool:

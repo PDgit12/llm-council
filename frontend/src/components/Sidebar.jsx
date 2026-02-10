@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import './Sidebar.css';
 
 export default function Sidebar({
@@ -8,6 +8,8 @@ export default function Sidebar({
   onNewConversation,
   onDeleteConversation,
 }) {
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
   return (
     <div className="sidebar">
       <div className="sidebar-header">
@@ -36,16 +38,45 @@ export default function Sidebar({
                   {conv.message_count} messages
                 </div>
               </div>
-              <button
-                className="delete-conv-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteConversation(conv.id);
-                }}
-                title="Delete conversation"
-              >
-                🗑️
-              </button>
+
+              {confirmDeleteId === conv.id ? (
+                <div className="delete-confirm-actions">
+                  <button
+                    className="confirm-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteConversation(conv.id);
+                      setConfirmDeleteId(null);
+                    }}
+                    title="Confirm delete"
+                  >
+                    ✅
+                  </button>
+                  <button
+                    className="cancel-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDeleteId(null);
+                    }}
+                    title="Cancel"
+                  >
+                    ❌
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="delete-conv-btn"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setConfirmDeleteId(conv.id);
+                  }}
+                  title="Delete conversation"
+                  aria-label="Delete conversation"
+                >
+                  🗑️
+                </button>
+              )}
             </div>
           ))
         )}

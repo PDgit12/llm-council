@@ -5,3 +5,5 @@ python-dotenv
 httpx
 google-generativeai
 pydantic
+python-multipart
+Pillow

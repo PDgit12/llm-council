@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { api, API_BASE_URL } from '../api';
+import FileUploader from './FileUploader';
+import TestCaseManager from './TestCaseManager';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
@@ -8,9 +11,12 @@ import './ChatInterface.css';
 export default function ChatInterface({
   conversation,
   onSendMessage,
+  onAddTestCase,
+  onDeleteTestCase,
   isLoading,
 }) {
   const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState([]);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -21,11 +27,27 @@ export default function ChatInterface({
     scrollToBottom();
   }, [conversation]);
 
+  const handleFileSelect = async (file) => {
+    try {
+      // Optimistic UI could be added here
+      const uploaded = await api.uploadFile(file);
+      setAttachments(prev => [...prev, uploaded]);
+    } catch (err) {
+      console.error("Upload failed", err);
+      alert("Failed to upload file");
+    }
+  };
+
+  const removeAttachment = (index) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (input.trim() && !isLoading) {
-      onSendMessage(input);
+    if ((input.trim() || attachments.length > 0) && !isLoading) {
+      onSendMessage(input, attachments);
       setInput('');
+      setAttachments([]);
     }
   };
 
@@ -51,10 +73,20 @@ export default function ChatInterface({
   return (
     <div className="chat-interface">
       <div className="messages-container">
+        <TestCaseManager
+          conversation={conversation}
+          onAddTestCase={onAddTestCase}
+          onDeleteTestCase={onDeleteTestCase}
+        />
+
         {conversation.messages.length === 0 ? (
           <div className="empty-state">
-            <h2>Start a conversation</h2>
-            <p>Ask a question to consult the LLM Council</p>
+            <h2>{conversation?.test_cases?.length > 0 ? "Prompt Optimization Lab" : "Welcome to LLM Council"}</h2>
+            <p>
+              {conversation?.test_cases?.length > 0
+                ? "Enter your task below to generate optimized prompts vetted against your test cases."
+                : "Ask a question and get a peer-reviewed answer from the council."}
+            </p>
           </div>
         ) : (
           conversation.messages.map((msg, index) => (
@@ -63,6 +95,19 @@ export default function ChatInterface({
                 <div className="user-message">
                   <div className="message-label">You</div>
                   <div className="message-content">
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div className="message-attachments">
+                        {msg.attachments.map((att, i) => (
+                          <div key={i} className="attachment-preview">
+                            {att.content_type?.startsWith('image/') ? (
+                              <img src={`${API_BASE_URL}${att.path}`} alt={att.filename} />
+                            ) : (
+                              <div className="file-icon">📄 {att.filename}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <div className="markdown-content">
                       <ReactMarkdown>{msg.content}</ReactMarkdown>
                     </div>
@@ -120,26 +165,37 @@ export default function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
-      {conversation.messages.length === 0 && (
-        <form className="input-form" onSubmit={handleSubmit}>
+      <form className="input-form" onSubmit={handleSubmit}>
+        {attachments.length > 0 && (
+          <div className="input-attachments">
+            {attachments.map((att, i) => (
+              <div key={i} className="attachment-chip">
+                <span>{att.filename}</span>
+                <button type="button" onClick={() => removeAttachment(i)}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="input-wrapper">
+          <FileUploader onFileSelect={handleFileSelect} disabled={isLoading} />
           <textarea
             className="message-input"
-            placeholder="Ask your question... (Shift+Enter for new line, Enter to send)"
+            placeholder={conversation?.test_cases?.length > 0 ? "Describe the task to optimize..." : "Ask your question... (Shift+Enter for new line, Enter to send)"}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={isLoading}
             rows={3}
           />
-          <button
-            type="submit"
-            className="send-button"
-            disabled={!input.trim() || isLoading}
-          >
-            Send
-          </button>
-        </form>
-      )}
-    </div>
+        </div>
+        <button
+          type="submit"
+          className="send-button"
+          disabled={(!input.trim() && attachments.length === 0) || isLoading}
+        >
+          Send
+        </button>
+      </form>
+    </div >
   );
 }

@@ -1,18 +1,28 @@
 """FastAPI backend for LLM Council."""
 
-from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import uuid
 import json
 import asyncio
+import os
+import shutil
 
 import storage
 from council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 
 app = FastAPI(title="LLM Council API")
+
+# Ensure upload directory exists
+UPLOAD_DIR = "data/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Mount uploads for serving
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # Enable CORS for local development and production
 app.add_middleware(
@@ -20,12 +30,36 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:3000",
+        "http://localhost:8000",
         "https://llm-council-alpha-pied.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """Upload a file to the server."""
+    file_id = str(uuid.uuid4())
+    # Keep original extension if possible
+    ext = os.path.splitext(file.filename)[1]
+    if not ext:
+        ext = ""
+    
+    filename = f"{file_id}{ext}"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    return {
+        "id": file_id,
+        "filename": file.filename,
+        "path": f"/uploads/{filename}",
+        "full_path": os.path.abspath(file_path),
+        "content_type": file.content_type
+    }
 
 
 class CreateConversationRequest(BaseModel):
@@ -36,6 +70,7 @@ class CreateConversationRequest(BaseModel):
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
+    attachments: Optional[List[Dict[str, Any]]] = None
 
 
 class ConversationMetadata(BaseModel):
@@ -46,12 +81,20 @@ class ConversationMetadata(BaseModel):
     message_count: int
 
 
+class TestCase(BaseModel):
+    """A test case for prompt optimization."""
+    id: Optional[str] = None
+    input: str
+    expected: str
+
+
 class Conversation(BaseModel):
     """Full conversation with all messages."""
     id: str
     created_at: str
     title: str
     messages: List[Dict[str, Any]]
+    test_cases: List[TestCase] = []
 
 
 @app.get("/")
@@ -92,6 +135,25 @@ async def delete_conversation(conversation_id: str):
     return {"status": "ok"}
 
 
+@app.post("/api/conversations/{conversation_id}/test-cases", response_model=TestCase)
+async def add_test_case(conversation_id: str, test_case: TestCase):
+    """Add a test case to a conversation."""
+    try:
+        new_test_case = storage.add_test_case(conversation_id, test_case.input, test_case.expected)
+        return new_test_case
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.delete("/api/conversations/{conversation_id}/test-cases/{test_case_id}")
+async def delete_test_case(conversation_id: str, test_case_id: str):
+    """Delete a test case from a conversation."""
+    success = storage.delete_test_case(conversation_id, test_case_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Test case or conversation not found")
+    return {"status": "ok"}
+
+
 @app.post("/api/conversations/{conversation_id}/message")
 async def send_message(conversation_id: str, request: SendMessageRequest):
     """
@@ -110,16 +172,21 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     is_first_message = len(history) == 0
 
     # Add user message
-    storage.add_user_message(conversation_id, request.content)
+    storage.add_user_message(conversation_id, request.content, attachments=request.attachments)
 
     # If this is the first message, generate a title
     if is_first_message:
-        title = await generate_conversation_title(request.content)
-        storage.update_conversation_title(conversation_id, title)
+        try:
+            # Don't let title generation fail the request
+            title = await generate_conversation_title(request.content)
+            storage.update_conversation_title(conversation_id, title)
+        except Exception as e:
+            print(f"Title generation failed: {e}")
 
-    # Run the 3-stage council process with history
+    # Run the 3-stage council process with history and test cases
+    test_cases = conversation.get("test_cases", [])
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-        request.content, history=history
+        request.content, history=history, attachments=request.attachments, test_cases=test_cases
     )
 
     # Add assistant message with all stages
@@ -159,7 +226,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             history = conversation["messages"]
             
             # Add user message
-            storage.add_user_message(conversation_id, request.content)
+            storage.add_user_message(conversation_id, request.content, attachments=request.attachments)
 
             # Start title generation in parallel (don't await yet)
             title_task = None
@@ -168,18 +235,37 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
             # Stage 1: Collect responses
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results = await stage1_collect_responses(request.content, history=history)
+            test_cases = conversation.get("test_cases", [])
+            is_lab_mode = len(test_cases) > 0
+            
+            stage1_results = await stage1_collect_responses(
+                request.content, 
+                history=history, 
+                attachments=request.attachments,
+                is_lab_mode=is_lab_mode
+            )
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
             # Stage 2: Collect rankings
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results, history=history)
+            stage2_results, label_to_model = await stage2_collect_rankings(
+                request.content, 
+                stage1_results, 
+                history=history,
+                test_cases=test_cases
+            )
             aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
             yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
 
             # Stage 3: Synthesize final answer
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results, history=history)
+            stage3_result = await stage3_synthesize_final(
+                request.content, 
+                stage1_results, 
+                stage2_results, 
+                history=history,
+                is_lab_mode=is_lab_mode
+            )
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
             # Wait for title generation if it was started
@@ -212,10 +298,6 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
         }
     )
 
-
-@app.get("/")
-async def root():
-    return {"message": "LLM Council Backend is Running"}
 
 
 @app.get("/debug/openrouter")

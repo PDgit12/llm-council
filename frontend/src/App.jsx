@@ -10,18 +10,6 @@ function App() {
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Load conversations on mount
-  useEffect(() => {
-    loadConversations();
-  }, []);
-
-  // Load conversation details when selected
-  useEffect(() => {
-    if (currentConversationId) {
-      loadConversation(currentConversationId);
-    }
-  }, [currentConversationId]);
-
   const loadConversations = async () => {
     try {
       const convs = await api.listConversations();
@@ -39,6 +27,18 @@ function App() {
       console.error('Failed to load conversation:', error);
     }
   };
+
+  // Load conversations on mount
+  useEffect(() => {
+    loadConversations();
+  }, []);
+
+  // Load conversation details when selected
+  useEffect(() => {
+    if (currentConversationId) {
+      loadConversation(currentConversationId);
+    }
+  }, [currentConversationId]);
 
   const handleNewConversation = async () => {
     try {
@@ -58,13 +58,10 @@ function App() {
   };
 
   const handleDeleteConversation = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this conversation?')) {
-      return;
-    }
-
     try {
       await api.deleteConversation(id);
-      setConversations(conversations.filter((c) => c.id !== id));
+      console.log(`Successfully deleted conversation: ${id}`);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
       if (currentConversationId === id) {
         setCurrentConversationId(null);
         setCurrentConversation(null);
@@ -75,13 +72,13 @@ function App() {
     }
   };
 
-  const handleSendMessage = async (content) => {
+  const handleSendMessage = async (content, attachments = []) => {
     if (!currentConversationId) return;
 
     setIsLoading(true);
     try {
       // Optimistically add user message to UI
-      const userMessage = { role: 'user', content };
+      const userMessage = { role: 'user', content, attachments };
       setCurrentConversation((prev) => ({
         ...prev,
         messages: [...prev.messages, userMessage],
@@ -107,8 +104,8 @@ function App() {
         messages: [...prev.messages, assistantMessage],
       }));
 
-      // Send message with streaming
-      await api.sendMessageStream(currentConversationId, content, (eventType, event) => {
+      // Send message with streaming - send object payload {content, attachments}
+      await api.sendMessageStream(currentConversationId, { content, attachments }, (eventType, event) => {
         switch (eventType) {
           case 'stage1_start':
             setCurrentConversation((prev) => {
@@ -199,6 +196,32 @@ function App() {
     }
   };
 
+  const handleAddTestCase = async (input, expected) => {
+    if (!currentConversationId) return;
+    try {
+      const newTc = await api.addTestCase(currentConversationId, input, expected);
+      setCurrentConversation(prev => ({
+        ...prev,
+        test_cases: [...(prev.test_cases || []), newTc]
+      }));
+    } catch (error) {
+      console.error('Failed to add test case:', error);
+    }
+  };
+
+  const handleDeleteTestCase = async (testCaseId) => {
+    if (!currentConversationId) return;
+    try {
+      await api.deleteTestCase(currentConversationId, testCaseId);
+      setCurrentConversation(prev => ({
+        ...prev,
+        test_cases: prev.test_cases.filter(tc => tc.id !== testCaseId)
+      }));
+    } catch (error) {
+      console.error('Failed to delete test case:', error);
+    }
+  };
+
   return (
     <div className="app">
       <Sidebar
@@ -211,6 +234,8 @@ function App() {
       <ChatInterface
         conversation={currentConversation}
         onSendMessage={handleSendMessage}
+        onAddTestCase={handleAddTestCase}
+        onDeleteTestCase={handleDeleteTestCase}
         isLoading={isLoading}
       />
     </div>

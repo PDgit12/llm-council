@@ -3,6 +3,7 @@
  */
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001';
+export const API_BASE_URL = API_BASE;
 
 export const api = {
   /**
@@ -69,11 +70,11 @@ export const api = {
   /**
    * Send a message and receive streaming updates.
    * @param {string} conversationId - The conversation ID
-   * @param {string} content - The message content
+   * @param {object} data - The message payload {content, attachments}
    * @param {function} onEvent - Callback function for each event: (eventType, data) => void
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent) {
+  async sendMessageStream(conversationId, payload, onEvent) {
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
@@ -81,7 +82,7 @@ export const api = {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(payload),
       }
     );
 
@@ -111,6 +112,54 @@ export const api = {
         }
       }
     }
+  },
+
+  /**
+   * Upload a file.
+   */
+  async uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE}/api/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to upload file');
+    }
+    return response.json();
+  },
+
+  /**
+   * Add a test case to a conversation.
+   */
+  async addTestCase(conversationId, input, expected) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/test-cases`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ input, expected }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to add test case');
+    }
+    return response.json();
+  },
+
+  /**
+   * Delete a test case from a conversation.
+   */
+  async deleteTestCase(conversationId, testCaseId) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/test-cases/${testCaseId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete test case');
+    }
+    return response.json();
   },
 
   /**

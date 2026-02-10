@@ -10,25 +10,26 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Council members - list of model identifiers
-# We use 'lite' versions and smaller models to minimize latency while maintaining quality.
+# Using high-quality preview models available to the user
+# Council members - list of model identifiers
+# Using ONLY verified working models (others hit 429 Quota limits)
 COUNCIL_MODELS = [
-    "google/gemini-2.0-flash-lite-preview-09-2025",
-    "google/gemini-flash-lite-latest",
-    "google/gemma-3-4b-it",
-    "google/gemma-3-12b-it",
+    "gemini-3-flash-preview", 
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemma-3-27b-it",
 ]
 
-# Models specifically for Stage 2 (Peer Ranking) - we use only the fastest here
+# Models specifically for Stage 2 (Peer Ranking) - we use fast models
 STAGE2_MODELS = [
-    "google/gemini-2.0-flash-lite-preview-09-2025",
-    "google/gemini-flash-lite-latest",
+    "gemini-2.5-flash-lite",
 ]
 
-# Chairman model - synthesizes final response
-CHAIRMAN_MODEL = "google/gemini-2.0-flash"
+# Chairman model - synthesizes final response (Using 3-flash as 3-pro hit quota limit)
+CHAIRMAN_MODEL = "gemini-3-flash-preview"
 
 # Model for fast title generation
-TITLE_MODEL = "google/gemini-flash-lite-latest"
+TITLE_MODEL = "gemini-2.5-flash-lite"
 
 # Global timeout for any single model request (seconds)
 MODEL_TIMEOUT = 20.0

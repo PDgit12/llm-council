@@ -109,3 +109,27 @@
   background: #ffeded;
   color: #d0021b;
 }
+
+.delete-confirm-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.confirm-btn,
+.cancel-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  font-size: 14px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.confirm-btn:hover {
+  background: #e6ffed;
+}
+
+.cancel-btn:hover {
+  background: #fff1f0;
+}

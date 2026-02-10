@@ -5,13 +5,19 @@ from openrouter import query_models_parallel, query_model
 from config import COUNCIL_MODELS, CHAIRMAN_MODEL, STAGE2_MODELS, TITLE_MODEL
 
 
-async def stage1_collect_responses(user_query: str, history: List[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+async def stage1_collect_responses(
+    user_query: str, 
+    history: List[Dict[str, Any]] = None,
+    attachments: List[Dict[str, Any]] = None,
+    is_lab_mode: bool = False
+) -> List[Dict[str, Any]]:
     """
-    Stage 1: Collect individual responses from all council models.
+    Stage 1: Collect individual responses or prompt variations.
 
     Args:
         user_query: The user's question
         history: Optional conversation history
+        attachments: Optional list of file attachments
 
     Returns:
         List of dicts with 'model' and 'response' keys
@@ -21,12 +27,34 @@ async def stage1_collect_responses(user_query: str, history: List[Dict[str, Any]
     if history:
         for msg in history:
             if msg['role'] == 'user':
-                messages.append({"role": "user", "content": msg['content']})
+                user_msg = {"role": "user", "content": msg['content']}
+                if 'attachments' in msg:
+                    user_msg['attachments'] = msg['attachments']
+                messages.append(user_msg)
             elif msg['role'] == 'assistant' and 'stage3' in msg:
                 # Only use the final synthesis for history
                 messages.append({"role": "assistant", "content": msg['stage3']['response']})
     
-    messages.append({"role": "user", "content": user_query})
+    if is_lab_mode:
+        # Prompt models to generate PROMPT STRATEGIES
+        current_msg = {"role": "user", "content": f"""You are a Prompt Engineer. Your goal is to design a high-performing prompt for the following task:
+
+Task: {user_query}
+
+Provide a comprehensive prompt that would solve this task effectively. 
+Focus on:
+- Clear instructions
+- Proper formatting
+- Edge case handling
+- Chain-of-thought instructions if appropriate
+
+Directly provide the prompt you would use as your response. Do not add conversational filler."""}
+    else:
+        current_msg = {"role": "user", "content": user_query}
+    
+    if attachments:
+        current_msg["attachments"] = attachments
+    messages.append(current_msg)
 
     # Query all models in parallel
     responses = await query_models_parallel(COUNCIL_MODELS, messages)
@@ -46,10 +74,11 @@ async def stage1_collect_responses(user_query: str, history: List[Dict[str, Any]
 async def stage2_collect_rankings(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
-    history: List[Dict[str, Any]] = None
+    history: List[Dict[str, Any]] = None,
+    test_cases: List[Dict[str, Any]] = None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
-    Stage 2: Each model ranks the anonymized responses.
+    Stage 2: Each model ranks the anonymized responses or tests prompts.
 
     Args:
         user_query: The original user query
@@ -107,6 +136,27 @@ Now provide your evaluation and ranking:"""
 
     messages = [{"role": "user", "content": ranking_prompt}]
 
+    if test_cases:
+        # If test cases exist, we run a "LIVE TEST" loop
+        # We query models to EVALUATE the performance of the generated prompts on test cases
+        test_case_context = "\n".join([f"Test Input: {tc['input']}\nExpected Output: {tc['expected']}" for tc in test_cases])
+        
+        evaluation_prompt = f"""You are evaluating different AI prompt strategies for the following task:
+Task: {user_query}
+
+TEST CASES:
+{test_case_context}
+
+PROMPT VARIATIONS:
+{responses_text}
+
+For each prompt variation, explain how well it handles the test cases. 
+Identify which one is most reliable and robust.
+
+FINAL RANKING:
+(Provide the ranking in the same numbered list format as before)"""
+        messages = [{"role": "user", "content": evaluation_prompt}]
+
     # Get rankings from a subset of fastest models (Stage 2 specialization)
     responses = await query_models_parallel(STAGE2_MODELS, messages)
 
@@ -129,10 +179,11 @@ async def stage3_synthesize_final(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
     stage2_results: List[Dict[str, Any]],
-    history: List[Dict[str, Any]] = None
+    history: List[Dict[str, Any]] = None,
+    is_lab_mode: bool = False
 ) -> Dict[str, Any]:
     """
-    Stage 3: Chairman synthesizes final response.
+    Stage 3: Chairman synthesizes final response or final prompt.
 
     Args:
         user_query: The original user query
@@ -169,7 +220,23 @@ Your task as Chairman is to synthesize all of this information into a single, co
 - The peer rankings and what they reveal about response quality
 - Any patterns of agreement or disagreement
 
-Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
+Providing a clear, well-reasoned final answer that represents the council's collective wisdom:"""
+
+    if is_lab_mode:
+        chairman_prompt = f"""You are the Chairman of the Prompt Lab. Multiple experts have proposed different prompt engineering strategies for a task, and they have been evaluated against test data.
+
+Original Task: {user_query}
+
+PROPOSED STRATEGIES:
+{stage1_text}
+
+PEER EVALUATIONS & TEST RESULTS:
+{stage2_text}
+
+Your goal is to synthesize these into the single best possible "Master Prompt". 
+Combine the strongest elements of each strategy. Ensure the final prompt is robust, well-formatted, and directly addresses the task requirements.
+
+Output ONLY your final synthesized prompt. No other explanation."""
 
     messages = []
     if history:
@@ -325,19 +392,33 @@ Title:"""
     return title
 
 
-async def run_full_council(user_query: str, history: List[Dict[str, Any]] = None) -> Tuple[List, List, Dict, Dict]:
+async def run_full_council(
+    user_query: str, 
+    history: List[Dict[str, Any]] = None,
+    attachments: List[Dict[str, Any]] = None,
+    test_cases: List[Dict[str, Any]] = None
+) -> Tuple[List, List, Dict, Dict]:
     """
     Run the complete 3-stage council process.
 
     Args:
         user_query: The user's question
         history: Optional conversation history
+        attachments: Optional list of file attachments
+        test_cases: Optional list of test cases for lab mode
 
     Returns:
         Tuple of (stage1_results, stage2_results, stage3_result, metadata)
     """
+    is_lab_mode = test_cases is not None and len(test_cases) > 0
+
     # Stage 1: Collect individual responses
-    stage1_results = await stage1_collect_responses(user_query, history=history)
+    stage1_results = await stage1_collect_responses(
+        user_query, 
+        history=history, 
+        attachments=attachments,
+        is_lab_mode=is_lab_mode
+    )
 
     # If no models responded successfully, return error
     if not stage1_results:
@@ -347,17 +428,23 @@ async def run_full_council(user_query: str, history: List[Dict[str, Any]] = None
         }, {}
 
     # Stage 2: Collect rankings
-    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results, history=history)
+    stage2_results, label_to_model = await stage2_collect_rankings(
+        user_query, 
+        stage1_results, 
+        history=history,
+        test_cases=test_cases
+    )
 
     # Calculate aggregate rankings
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
 
-    # Stage 3: Synthesize final answer
+    # Stage 3: Synthesize final answer or prompt
     stage3_result = await stage3_synthesize_final(
         user_query,
         stage1_results,
         stage2_results,
-        history=history
+        history=history,
+        is_lab_mode=is_lab_mode
     )
 
     # Prepare metadata

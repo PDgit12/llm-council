@@ -9,9 +9,13 @@ export default function Stage1({ responses }) {
     return null;
   }
 
+  const isLab = responses[0]?.response?.includes('Prompt variation') || responses[0]?.response?.startsWith('# PROMPT');
+
   return (
     <div className="stage stage1">
-      <h3 className="stage-title">Stage 1: Individual Responses</h3>
+      <h3 className="stage-title">
+        {isLab ? "Stage 1: Prompt Strategies" : "Stage 1: Individual Responses"}
+      </h3>
 
       <div className="tabs">
         {responses.map((resp, index) => (
