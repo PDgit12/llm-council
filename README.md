@@ -31,19 +31,6 @@ A specialized "Chairman" model reviews the original requirements, the cross-mode
 
 ---
 
-## 🚀 Quick Start
-
-### Backend
-1. Create a `.env` file with your `OPENROUTER_API_KEY` and `GOOGLE_API_KEY`.
-2. Install dependencies: `pip install -r backend/requirements.txt`
-3. Start the server: `python -m backend.main`
-
-### Frontend
-1. Install dependencies: `npm install`
-2. Run development server: `npm run dev`
-
----
-
 ## 🏗️ Architecture
 
 - **Engine**: FastAPI (Python 3.10+)
