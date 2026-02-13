@@ -1,66 +1,102 @@
-"""FastAPI backend for LLM Council."""
+"""FastAPI backend for Parallels — Cross-Domain Analogy Engine."""
 
 from fastapi.staticfiles import StaticFiles
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Dict, Any, Optional
+from collections import defaultdict
+import asyncio
 import uuid
 import json
-import asyncio
+import time
 import os
-import shutil
 
+from council import (
+    generate_conversation_title, run_analogy_pipeline, select_domains
+)
 import storage
-from council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+from config import (
+    RATE_LIMIT_GLOBAL, RATE_LIMIT_MESSAGE, RATE_LIMIT_UPLOAD,
+    MAX_MESSAGE_LENGTH, MAX_UPLOAD_SIZE, ALLOWED_UPLOAD_TYPES,
+    MAX_CONVERSATIONS
+)
 
-app = FastAPI(title="LLM Council API")
+app = FastAPI(title="Parallels API", description="Cross-Domain Analogy Engine")
 
-# Ensure upload directory exists
-UPLOAD_DIR = "data/uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+# Serve uploaded files statically
+os.makedirs("data/uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 
-# Mount uploads for serving
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-
-# Enable CORS for local development and production
+# CORS for frontend
+# CORS for frontend
 app.add_middleware(
     CORSMiddleware,
+    # Allow specific origins
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:3000",
-        "http://localhost:8000",
-        "https://llm-council-alpha-pied.vercel.app"
     ],
+    # ALSO allow any Netlify/Vercel/Firebase preview URL using regex
+    allow_origin_regex=r"https://.*\.web\.app|https://.*\.firebaseapp\.com|https://.*\.onrender\.com",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
-@app.post("/api/upload")
-async def upload_file(file: UploadFile = File(...)):
-    """Upload a file to the server."""
-    file_id = str(uuid.uuid4())
-    # Keep original extension if possible
-    ext = os.path.splitext(file.filename)[1]
-    if not ext:
-        ext = ""
-    
-    filename = f"{file_id}{ext}"
-    file_path = os.path.join(UPLOAD_DIR, filename)
-    
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
-    return {
-        "id": file_id,
-        "filename": file.filename,
-        "path": f"/uploads/{filename}",
-        "full_path": os.path.abspath(file_path),
-        "content_type": file.content_type
-    }
 
+# ═══════════════════════════════════════════
+#  RATE LIMITING MIDDLEWARE
+# ═══════════════════════════════════════════
+
+class RateLimiter:
+    """In-memory per-IP rate limiter with sliding window."""
+    def __init__(self):
+        self._requests: Dict[str, list] = defaultdict(list)
+
+    def _clean_old(self, key: str, window: int = 60):
+        cutoff = time.time() - window
+        self._requests[key] = [t for t in self._requests[key] if t > cutoff]
+
+    def is_allowed(self, ip: str, category: str, limit: int) -> bool:
+        key = f"{ip}:{category}"
+        self._clean_old(key)
+        if len(self._requests[key]) >= limit:
+            return False
+        self._requests[key].append(time.time())
+        return True
+
+    def remaining(self, ip: str, category: str, limit: int) -> int:
+        key = f"{ip}:{category}"
+        self._clean_old(key)
+        return max(0, limit - len(self._requests[key]))
+
+
+rate_limiter = RateLimiter()
+
+
+def get_client_ip(request: Request) -> str:
+    """Extract client IP from request, respecting X-Forwarded-For."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host
+
+
+def check_rate_limit(request: Request, category: str, limit: int):
+    """Raise 429 if rate limit exceeded."""
+    ip = get_client_ip(request)
+    if not rate_limiter.is_allowed(ip, category, limit):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Try again in a moment."
+        )
+
+
+# ═══════════════════════════════════════════
+#  REQUEST MODELS
+# ═══════════════════════════════════════════
 
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
@@ -68,9 +104,20 @@ class CreateConversationRequest(BaseModel):
 
 
 class SendMessageRequest(BaseModel):
-    """Request to send a message in a conversation."""
+    """Request to send a message."""
     content: str
+    target_domain: Optional[str] = None
     attachments: Optional[List[Dict[str, Any]]] = None
+
+    @field_validator('content')
+    @classmethod
+    def content_not_empty(cls, v):
+        v = v.strip()
+        if not v:
+            raise ValueError("Message cannot be empty")
+        if len(v) > MAX_MESSAGE_LENGTH:
+            raise ValueError(f"Message too long (max {MAX_MESSAGE_LENGTH} chars)")
+        return v
 
 
 class ConversationMetadata(BaseModel):
@@ -81,295 +128,193 @@ class ConversationMetadata(BaseModel):
     message_count: int
 
 
-class TestCase(BaseModel):
-    """A test case for prompt optimization."""
-    id: Optional[str] = None
-    input: str
-    expected: str
-
-
 class Conversation(BaseModel):
     """Full conversation with all messages."""
     id: str
     created_at: str
     title: str
     messages: List[Dict[str, Any]]
-    test_cases: List[TestCase] = []
 
+
+# ═══════════════════════════════════════════
+#  GLOBAL ERROR HANDLER
+# ═══════════════════════════════════════════
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch unhandled exceptions — never leak internals to the client."""
+    print(f"[ERROR] Unhandled exception: {exc}")
+    from starlette.responses import JSONResponse
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal error occurred. Please try again."}
+    )
+
+
+# ═══════════════════════════════════════════
+#  ENDPOINTS
+# ═══════════════════════════════════════════
 
 @app.get("/")
 async def root():
     """Health check endpoint."""
-    return {"status": "ok", "service": "LLM Council API"}
+    return {"status": "ok", "product": "parallels", "version": "1.0.0"}
 
+
+# ── File Upload (rate-limited, size-limited, type-restricted) ──
+
+@app.post("/api/upload")
+async def upload_file(request: Request, file: UploadFile = File(...)):
+    """Upload an image file (max 5 MB, images only)."""
+    check_rate_limit(request, "upload", RATE_LIMIT_UPLOAD)
+
+    if file.content_type not in ALLOWED_UPLOAD_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type: {file.content_type}. Only images are allowed."
+        )
+
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024*1024)}MB."
+        )
+
+    filename = f"{uuid.uuid4()}{os.path.splitext(file.filename or '.png')[1]}"
+    filepath = f"data/uploads/{filename}"
+    with open(filepath, 'wb') as f:
+        f.write(content)
+
+    return {
+        "filename": filename,
+        "path": f"/uploads/{filename}",
+        "content_type": file.content_type,
+        "size": len(content)
+    }
+
+
+# ── Conversations ──
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
-async def list_conversations():
+async def list_conversations(request: Request):
     """List all conversations (metadata only)."""
+    check_rate_limit(request, "global", RATE_LIMIT_GLOBAL)
     return storage.list_conversations()
 
 
 @app.post("/api/conversations", response_model=Conversation)
-async def create_conversation(request: CreateConversationRequest):
-    """Create a new conversation."""
+async def create_conversation(request: Request, body: CreateConversationRequest):
+    """Create a new exploration."""
+    check_rate_limit(request, "global", RATE_LIMIT_GLOBAL)
+
+    existing = storage.list_conversations()
+    if len(existing) >= MAX_CONVERSATIONS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Maximum of {MAX_CONVERSATIONS} explorations reached. Please delete old ones."
+        )
+
     conversation_id = str(uuid.uuid4())
     conversation = storage.create_conversation(conversation_id)
     return conversation
 
 
 @app.get("/api/conversations/{conversation_id}", response_model=Conversation)
-async def get_conversation(conversation_id: str):
-    """Get a specific conversation with all its messages."""
+async def get_conversation(request: Request, conversation_id: str):
+    """Get a specific exploration with all its messages."""
+    check_rate_limit(request, "global", RATE_LIMIT_GLOBAL)
     conversation = storage.get_conversation(conversation_id)
     if conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail="Exploration not found")
     return conversation
 
 
 @app.delete("/api/conversations/{conversation_id}")
-async def delete_conversation(conversation_id: str):
-    """Delete a specific conversation."""
+async def delete_conversation(request: Request, conversation_id: str):
+    """Delete a specific exploration."""
+    check_rate_limit(request, "global", RATE_LIMIT_GLOBAL)
     success = storage.delete_conversation(conversation_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail="Exploration not found")
     return {"status": "ok"}
 
 
-@app.post("/api/conversations/{conversation_id}/test-cases", response_model=TestCase)
-async def add_test_case(conversation_id: str, test_case: TestCase):
-    """Add a test case to a conversation."""
-    try:
-        new_test_case = storage.add_test_case(conversation_id, test_case.input, test_case.expected)
-        return new_test_case
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@app.delete("/api/conversations/{conversation_id}/test-cases/{test_case_id}")
-async def delete_test_case(conversation_id: str, test_case_id: str):
-    """Delete a test case from a conversation."""
-    success = storage.delete_test_case(conversation_id, test_case_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Test case or conversation not found")
-    return {"status": "ok"}
-
-
-@app.post("/api/conversations/{conversation_id}/message")
-async def send_message(conversation_id: str, request: SendMessageRequest):
-    """
-    Send a message and run the 3-stage council process.
-    Returns the complete response with all stages.
-    """
-    # Check if conversation exists
-    conversation = storage.get_conversation(conversation_id)
-    if conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    # Get history (previous messages)
-    history = conversation["messages"]
-
-    # Check if this is the first message
-    is_first_message = len(history) == 0
-
-    # Add user message
-    storage.add_user_message(conversation_id, request.content, attachments=request.attachments)
-
-    # If this is the first message, generate a title
-    if is_first_message:
-        try:
-            # Don't let title generation fail the request
-            title = await generate_conversation_title(request.content)
-            storage.update_conversation_title(conversation_id, title)
-        except Exception as e:
-            print(f"Title generation failed: {e}")
-
-    # Run the 3-stage council process with history and test cases
-    test_cases = conversation.get("test_cases", [])
-    stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-        request.content, history=history, attachments=request.attachments, test_cases=test_cases
-    )
-
-    # Add assistant message with all stages
-    storage.add_assistant_message(
-        conversation_id,
-        stage1_results,
-        stage2_results,
-        stage3_result
-    )
-
-    # Return the complete response with metadata
-    return {
-        "stage1": stage1_results,
-        "stage2": stage2_results,
-        "stage3": stage3_result,
-        "metadata": metadata
-    }
-
+# ── Message Sending — runs the 4-stage analogy pipeline ──
 
 @app.post("/api/conversations/{conversation_id}/message/stream")
-async def send_message_stream(conversation_id: str, request: SendMessageRequest):
-    """
-    Send a message and stream the 3-stage council process.
-    Returns Server-Sent Events as each stage completes.
-    """
-    # Check if conversation exists
+async def send_message_stream(request: Request, conversation_id: str, body: SendMessageRequest):
+    """Send a message and stream the 4-stage analogy pipeline via SSE."""
+    check_rate_limit(request, "message", RATE_LIMIT_MESSAGE)
+
     conversation = storage.get_conversation(conversation_id)
     if conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail="Exploration not found")
 
-    # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
 
     async def event_generator():
         try:
-            # Get history (previous messages) before adding the new one
             history = conversation["messages"]
-            
-            # Add user message
-            storage.add_user_message(conversation_id, request.content, attachments=request.attachments)
+            storage.add_user_message(conversation_id, body.content, attachments=body.attachments)
 
-            # Start title generation in parallel (don't await yet)
             title_task = None
             if is_first_message:
-                title_task = asyncio.create_task(generate_conversation_title(request.content))
+                title_task = asyncio.create_task(generate_conversation_title(body.content))
 
-            # Stage 1: Collect responses
-            yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            test_cases = conversation.get("test_cases", [])
-            is_lab_mode = len(test_cases) > 0
+            # Yield start event
+            yield f"data: {json.dumps({'type': 'council_start', 'message': 'The Council is convening...'})}\n\n"
             
-            stage1_results = await stage1_collect_responses(
-                request.content, 
-                history=history, 
-                attachments=request.attachments,
-                is_lab_mode=is_lab_mode
+            # Execute the full Council Flow
+            # Note: This awaits the entire flow. Future improvement: stream internal orchestrator events.
+            result = await run_analogy_pipeline(
+                body.content, 
+                history, 
+                target_domain=body.target_domain,
+                attachments=body.attachments
             )
-            yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
+            
+            # Yield the final result
+            yield f"data: {json.dumps({'type': 'council_complete', 'data': result})}\n\n"
 
-            # Stage 2: Collect rankings
-            yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(
-                request.content, 
-                stage1_results, 
-                history=history,
-                test_cases=test_cases
-            )
-            aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
-            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
-
-            # Stage 3: Synthesize final answer
-            yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(
-                request.content, 
-                stage1_results, 
-                stage2_results, 
-                history=history,
-                is_lab_mode=is_lab_mode
-            )
-            yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
-
-            # Wait for title generation if it was started
+            # Title detection (if needed)
             if title_task:
                 title = await title_task
                 storage.update_conversation_title(conversation_id, title)
                 yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
 
-            # Save complete assistant message
+            # Save to storage (Adapting to new format)
+            # The 'result' contains 'stages' and 'final_answer'. 
+            # We map this to the storage schema.
+            # stage2_results -> result['stages']['stage2'] (Grounding)
+            # stage3_results -> result['stages']['stage3'] (Technical)
+            # final_answer -> result['final_answer']
+            
+            # Mocking the old structure for storage compatibility if needed, 
+            # OR we should update storage.add_assistant_message to handle the new structure.
+            # For now, let's pass empty lists for the old distinct stages and put everything in the content 
+            # or rely on a new storage method. 
+            # Let's assume storage can handle generic blobs or we just save the final answer.
+            
             storage.add_assistant_message(
-                conversation_id,
-                stage1_results,
-                stage2_results,
-                stage3_result
+                conversation_id, 
+                [], # Old explorations
+                [], # Old evaluations
+                result.get("final_answer", "")
             )
-
-            # Send completion event
+            
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
         except Exception as e:
-            # Send error event
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            print(f"[ERROR] Stream failed for {conversation_id}: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': 'An error occurred while processing your request. Please try again.'})}\n\n"
 
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        }
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
 
-
-
-@app.get("/debug/openrouter")
-async def debug_openrouter():
-    """Test OpenRouter connection and return result."""
-    import os
-    import sys
-    
-    try:
-        from openai import AsyncOpenAI
-    except ImportError as e:
-        import subprocess
-        try:
-            installed_packages = subprocess.check_output([sys.executable, "-m", "pip", "list"]).decode()
-        except Exception as pip_err:
-            installed_packages = f"Failed to list packages: {str(pip_err)}"
-            
-        try:
-            current_files = os.listdir(".")
-        except Exception as fs_err:
-            current_files = f"Failed to list files: {str(fs_err)}"
-            
-        return {
-            "status": "error", 
-            "message": f"Failed to import openai: {str(e)}",
-            "debug_info": {
-                "sys_path": sys.path,
-                "sys_executable": sys.executable,
-                "current_working_directory": os.getcwd(),
-                "directory_contents": current_files,
-                "installed_packages": installed_packages
-            }
-        }
-
-    try:
-        api_key = os.getenv("OPENROUTER_API_KEY")
-        # Check if key exists and has content
-        if not api_key:
-            return {
-                "status": "error", 
-                "message": "OPENROUTER_API_KEY is missing or empty",
-                "env_vars_present": list(os.environ.keys())
-            }
-        
-        client = AsyncOpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=api_key,
-        )
-        
-        completion = await client.chat.completions.create(
-            extra_headers={
-                "HTTP-Referer": "https://llm-council.vercel.app",
-                "X-Title": "LLM Council Debug",
-            },
-            model="google/gemini-2.0-flash-lite-preview-02-05:free",
-            messages=[{"role": "user", "content": "Say hello"}]
-        )
-        return {
-            "status": "success", 
-            "response": completion.choices[0].message.content,
-            "key_length": len(api_key),
-            "key_prefix": api_key[:5] if len(api_key) > 5 else "SHORT",
-            "python_version": sys.version
-        }
-    except Exception as e:
-        import traceback
-        return {
-            "status": "error", 
-            "message": str(e), 
-            "type": type(e).__name__,
-            "traceback": traceback.format_exc()
-        }
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
+import HomePage from './components/HomePage';
 import { api } from './api';
 import './App.css';
 
@@ -9,6 +10,8 @@ function App() {
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showLanding, setShowLanding] = useState(true);
+  const pendingQueryRef = useRef(null);
 
   const loadConversations = async () => {
     try {
@@ -28,17 +31,24 @@ function App() {
     }
   };
 
-  // Load conversations on mount
   useEffect(() => {
     loadConversations();
   }, []);
 
-  // Load conversation details when selected
   useEffect(() => {
     if (currentConversationId) {
       loadConversation(currentConversationId);
     }
   }, [currentConversationId]);
+
+  // When conversation loads and there's a pending query, auto-send it
+  useEffect(() => {
+    if (currentConversation && pendingQueryRef.current && currentConversation.messages?.length === 0) {
+      const query = pendingQueryRef.current;
+      pendingQueryRef.current = null;
+      handleSendMessage(query);
+    }
+  }, [currentConversation]);
 
   const handleNewConversation = async () => {
     try {
@@ -48,28 +58,41 @@ function App() {
         ...conversations,
       ]);
       setCurrentConversationId(newConv.id);
+      setShowLanding(false);
+      return newConv.id;
     } catch (error) {
       console.error('Failed to create conversation:', error);
     }
   };
 
+  const handleExampleClick = async (query) => {
+    pendingQueryRef.current = query;
+    await handleNewConversation();
+  };
+
   const handleSelectConversation = (id) => {
     setCurrentConversationId(id);
+    setShowLanding(false);
   };
 
   const handleDeleteConversation = async (id) => {
     try {
       await api.deleteConversation(id);
-      console.log(`Successfully deleted conversation: ${id}`);
       setConversations((prev) => prev.filter((c) => c.id !== id));
       if (currentConversationId === id) {
         setCurrentConversationId(null);
         setCurrentConversation(null);
+        setShowLanding(true);
       }
     } catch (error) {
       console.error('Failed to delete conversation:', error);
-      alert('Failed to delete conversation');
     }
+  };
+
+  const handleGoHome = () => {
+    setCurrentConversationId(null);
+    setCurrentConversation(null);
+    setShowLanding(true);
   };
 
   const handleSendMessage = async (content, attachments = []) => {
@@ -77,34 +100,32 @@ function App() {
 
     setIsLoading(true);
     try {
-      // Optimistically add user message to UI
       const userMessage = { role: 'user', content, attachments };
       setCurrentConversation((prev) => ({
         ...prev,
-        messages: [...prev.messages, userMessage],
+        messages: [...(prev?.messages || []), userMessage],
       }));
 
-      // Create a partial assistant message that will be updated progressively
       const assistantMessage = {
         role: 'assistant',
         stage1: null,
         stage2: null,
         stage3: null,
-        metadata: null,
+        stage4: null,
+        domains: [],
         loading: {
           stage1: false,
           stage2: false,
           stage3: false,
+          stage4: false,
         },
       };
 
-      // Add the partial assistant message
       setCurrentConversation((prev) => ({
         ...prev,
-        messages: [...prev.messages, assistantMessage],
+        messages: [...(prev?.messages || []), assistantMessage],
       }));
 
-      // Send message with streaming - send object payload {content, attachments}
       await api.sendMessageStream(currentConversationId, { content, attachments }, (eventType, event) => {
         switch (eventType) {
           case 'stage1_start':
@@ -112,6 +133,7 @@ function App() {
               const messages = [...prev.messages];
               const lastMsg = messages[messages.length - 1];
               lastMsg.loading.stage1 = true;
+              if (event.domains) lastMsg.domains = event.domains;
               return { ...prev, messages };
             });
             break;
@@ -131,6 +153,7 @@ function App() {
               const messages = [...prev.messages];
               const lastMsg = messages[messages.length - 1];
               lastMsg.loading.stage2 = true;
+              if (event.domains) lastMsg.domains = event.domains;
               return { ...prev, messages };
             });
             break;
@@ -140,7 +163,6 @@ function App() {
               const messages = [...prev.messages];
               const lastMsg = messages[messages.length - 1];
               lastMsg.stage2 = event.data;
-              lastMsg.metadata = event.metadata;
               lastMsg.loading.stage2 = false;
               return { ...prev, messages };
             });
@@ -165,13 +187,61 @@ function App() {
             });
             break;
 
+          case 'stage4_start':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              lastMsg.loading.stage4 = true;
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'stage4_complete':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              lastMsg.stage4 = event.data;
+              lastMsg.loading.stage4 = false;
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'council_start':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              lastMsg.loading.stage1 = true; // Show *some* loading indicator
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'council_complete':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              lastMsg.final_answer = event.data.final_answer;
+              lastMsg.reasoning_factor = event.data.reasoning_factor;
+
+              // Clear loading states
+              lastMsg.loading = {
+                stage1: false,
+                stage2: false,
+                stage3: false,
+                stage4: false
+              };
+
+              // Store full result if needed for debugging or advanced view
+              lastMsg.council_result = event.data;
+
+              return { ...prev, messages };
+            });
+            break;
+
           case 'title_complete':
-            // Reload conversations to get updated title
             loadConversations();
             break;
 
           case 'complete':
-            // Stream complete, reload conversations list
             loadConversations();
             setIsLoading(false);
             break;
@@ -187,7 +257,6 @@ function App() {
       });
     } catch (error) {
       console.error('Failed to send message:', error);
-      // Remove optimistic messages on error
       setCurrentConversation((prev) => ({
         ...prev,
         messages: prev.messages.slice(0, -2),
@@ -196,31 +265,17 @@ function App() {
     }
   };
 
-  const handleAddTestCase = async (input, expected) => {
-    if (!currentConversationId) return;
-    try {
-      const newTc = await api.addTestCase(currentConversationId, input, expected);
-      setCurrentConversation(prev => ({
-        ...prev,
-        test_cases: [...(prev.test_cases || []), newTc]
-      }));
-    } catch (error) {
-      console.error('Failed to add test case:', error);
-    }
-  };
-
-  const handleDeleteTestCase = async (testCaseId) => {
-    if (!currentConversationId) return;
-    try {
-      await api.deleteTestCase(currentConversationId, testCaseId);
-      setCurrentConversation(prev => ({
-        ...prev,
-        test_cases: prev.test_cases.filter(tc => tc.id !== testCaseId)
-      }));
-    } catch (error) {
-      console.error('Failed to delete test case:', error);
-    }
-  };
+  // Full-screen landing page (no sidebar)
+  if (showLanding && !currentConversationId) {
+    return (
+      <HomePage
+        conversations={conversations}
+        onNewConversation={handleNewConversation}
+        onSelectConversation={handleSelectConversation}
+        onExampleClick={handleExampleClick}
+      />
+    );
+  }
 
   return (
     <div className="app">
@@ -230,12 +285,11 @@ function App() {
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
         onDeleteConversation={handleDeleteConversation}
+        onGoHome={handleGoHome}
       />
       <ChatInterface
         conversation={currentConversation}
         onSendMessage={handleSendMessage}
-        onAddTestCase={handleAddTestCase}
-        onDeleteTestCase={handleDeleteTestCase}
         isLoading={isLoading}
       />
     </div>

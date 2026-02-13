@@ -36,7 +36,13 @@ async def query_model_direct_google(
             # simple import check
             import google.generativeai as genai
             
-            model = genai.GenerativeModel(model_name)
+            model = genai.GenerativeModel(
+                model_name,
+                system_instruction=next((m['content'] for m in messages if m.get('role') == 'system'), None)
+            )
+            
+            # Filter out system messages for the conversation
+            conv_messages = [m for m in messages if m.get('role') != 'system']
             
             # Convert messages to Gemini history format and handle images
             gemini_history = []
@@ -55,7 +61,7 @@ async def query_model_direct_google(
                 return None
 
             # Process history (excluding last message)
-            for msg in messages[:-1]:
+            for msg in conv_messages[:-1]:
                 role = 'user' if msg['role'] == 'user' else 'model'
                 parts = [msg['content']]
                 
@@ -70,7 +76,7 @@ async def query_model_direct_google(
                 gemini_history.append({'role': role, 'parts': parts})
             
             # Process current message
-            last_msg = messages[-1]
+            last_msg = conv_messages[-1]
             current_parts = [last_msg['content']]
             if 'attachments' in last_msg and last_msg['attachments']:
                 for att in last_msg['attachments']:
@@ -150,14 +156,34 @@ async def query_model(
                 'reasoning_details': message.get('reasoning_details')
             }
     except Exception as e:
-        print(f"Error querying model {model} via OpenRouter: {e}")
+        print(f"⚠️ Error querying {model}: {e}")
+        
+        # Check for defined fallback
+        from config import MODEL_FALLBACKS
+        if model in MODEL_FALLBACKS:
+            backup_model = MODEL_FALLBACKS[model]
+            print(f"🔄 Switching to BACKUP model: {backup_model}")
+            try:
+                # Recursive call with the backup model
+                # We do NOT pass the fallback again to avoid infinite loops if backup is same as primary (though config prevents this)
+                return await query_model(backup_model, messages, timeout=timeout)
+            except Exception as backup_e:
+                print(f"❌ Backup {backup_model} also failed: {backup_e}")
+                
         return None
 
 async def query_models_parallel(
     models: List[str],
-    messages: List[Dict[str, str]]
+    messages: List[Dict[str, str]],
+    model_messages: Dict[str, List[Dict[str, str]]] = None
 ) -> Dict[str, Optional[Dict[str, Any]]]:
-    """Query multiple models in parallel with staggered starts to avoid rate limits."""
+    """Query multiple models in parallel with staggered starts to avoid rate limits.
+    
+    Args:
+        models: List of model identifiers
+        messages: Default messages for all models (can be None if model_messages provided)
+        model_messages: Optional dict mapping model -> custom messages (for lens personas)
+    """
     import asyncio
     import random
     
@@ -166,12 +192,15 @@ async def query_models_parallel(
             await asyncio.sleep(delay)
         return await query_model(model, msgs)
 
-    # Stagger requests by 0.5 to 1.5 seconds to avoid hitting "Requests per minute" burst limits
+    # Stagger requests slightly to avoid hitting strict "burst" limits, but keep it fast.
+    # Reduced from 1.5s to 0.2s to improve user-perceived latency.
     tasks = []
     for i, model in enumerate(models):
-        # First model runs immediately, others stagger
-        delay = 0 if i == 0 else (i * 1.5) + random.uniform(0, 0.5)
-        tasks.append(delayed_query(model, messages, delay))
+        # Use per-model messages if available, otherwise default
+        msgs = model_messages.get(model, messages) if model_messages else messages
+        # First model runs immediately, others stagger slightly (200ms)
+        delay = 0 if i == 0 else (i * 0.2) + random.uniform(0, 0.1)
+        tasks.append(delayed_query(model, msgs, delay))
     
     responses = await asyncio.gather(*tasks)
     return {model: response for model, response in zip(models, responses)}

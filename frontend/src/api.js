@@ -1,5 +1,5 @@
 /**
- * API client for the LLM Council backend.
+ * API client for the Parallels backend.
  */
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001';
@@ -7,18 +7,18 @@ export const API_BASE_URL = API_BASE;
 
 export const api = {
   /**
-   * List all conversations.
+   * List all explorations.
    */
   async listConversations() {
     const response = await fetch(`${API_BASE}/api/conversations`);
     if (!response.ok) {
-      throw new Error('Failed to list conversations');
+      throw new Error('Failed to list explorations');
     }
     return response.json();
   },
 
   /**
-   * Create a new conversation.
+   * Create a new exploration.
    */
   async createConversation() {
     const response = await fetch(`${API_BASE}/api/conversations`, {
@@ -29,50 +29,29 @@ export const api = {
       body: JSON.stringify({}),
     });
     if (!response.ok) {
-      throw new Error('Failed to create conversation');
+      throw new Error('Failed to create exploration');
     }
     return response.json();
   },
 
   /**
-   * Get a specific conversation.
+   * Get a specific exploration.
    */
   async getConversation(conversationId) {
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}`
     );
     if (!response.ok) {
-      throw new Error('Failed to get conversation');
+      throw new Error('Failed to get exploration');
     }
     return response.json();
   },
 
   /**
-   * Send a message in a conversation.
-   */
-  async sendMessage(conversationId, content) {
-    const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}/message`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ content }),
-      }
-    );
-    if (!response.ok) {
-      throw new Error('Failed to send message');
-    }
-    return response.json();
-  },
-
-  /**
-   * Send a message and receive streaming updates.
-   * @param {string} conversationId - The conversation ID
-   * @param {object} data - The message payload {content, attachments}
-   * @param {function} onEvent - Callback function for each event: (eventType, data) => void
-   * @returns {Promise<void>}
+   * Send a message and receive streaming updates via SSE.
+   * @param {string} conversationId
+   * @param {object} payload - { content, attachments?, target_domain? }
+   * @param {function} onEvent - (eventType, data) => void
    */
   async sendMessageStream(conversationId, payload, onEvent) {
     const response = await fetch(
@@ -133,37 +112,7 @@ export const api = {
   },
 
   /**
-   * Add a test case to a conversation.
-   */
-  async addTestCase(conversationId, input, expected) {
-    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/test-cases`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ input, expected }),
-    });
-    if (!response.ok) {
-      throw new Error('Failed to add test case');
-    }
-    return response.json();
-  },
-
-  /**
-   * Delete a test case from a conversation.
-   */
-  async deleteTestCase(conversationId, testCaseId) {
-    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/test-cases/${testCaseId}`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) {
-      throw new Error('Failed to delete test case');
-    }
-    return response.json();
-  },
-
-  /**
-   * Delete a conversation.
+   * Delete an exploration.
    */
   async deleteConversation(conversationId) {
     const response = await fetch(
@@ -173,7 +122,7 @@ export const api = {
       }
     );
     if (!response.ok) {
-      throw new Error('Failed to delete conversation');
+      throw new Error('Failed to delete exploration');
     }
     return response.json();
   },

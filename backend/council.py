@@ -1,456 +1,187 @@
-"""3-stage LLM Council orchestration."""
+"""6-Stage Council Orchestrator for Parallels."""
 
-from typing import List, Dict, Any, Tuple
+import asyncio
+import json
+import logging
+import random
+from typing import List, Dict, Any, Optional
+
 from openrouter import query_models_parallel, query_model
-from config import COUNCIL_MODELS, CHAIRMAN_MODEL, STAGE2_MODELS, TITLE_MODEL
+from config import (
+    STAGE1_MODELS, STAGE2_MODELS, STAGE3_MODELS, 
+    STAGE4_MODELS, STAGE5_MODELS, STAGE6_MODEL,
+    TITLE_MODEL, DOMAIN_POOL,
+    MODEL_NICHE_SPECIALIST, MODEL_TECHNICAL_SPECIALIST
+)
 
+# Security & Safety
+from safety.input_guard import InputSafetyGuard
+from safety.output_guard import OutputSafetyGuard
+from safety.policy_engine import PolicyEngine
 
-async def stage1_collect_responses(
-    user_query: str, 
-    history: List[Dict[str, Any]] = None,
-    attachments: List[Dict[str, Any]] = None,
-    is_lab_mode: bool = False
-) -> List[Dict[str, Any]]:
-    """
-    Stage 1: Collect individual responses or prompt variations.
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("council_orchestrator")
 
-    Args:
-        user_query: The user's question
-        history: Optional conversation history
-        attachments: Optional list of file attachments
+# Initialize Safety Components
+input_guard = InputSafetyGuard()
+output_guard = OutputSafetyGuard()
+policy_engine = PolicyEngine()
 
-    Returns:
-        List of dicts with 'model' and 'response' keys
-    """
-    # Format messages for models
-    messages = []
-    if history:
-        for msg in history:
-            if msg['role'] == 'user':
-                user_msg = {"role": "user", "content": msg['content']}
-                if 'attachments' in msg:
-                    user_msg['attachments'] = msg['attachments']
-                messages.append(user_msg)
-            elif msg['role'] == 'assistant' and 'stage3' in msg:
-                # Only use the final synthesis for history
-                messages.append({"role": "assistant", "content": msg['stage3']['response']})
-    
-    if is_lab_mode:
-        # Prompt models to generate PROMPT STRATEGIES
-        current_msg = {"role": "user", "content": f"""You are a Prompt Engineer. Your goal is to design a high-performing prompt for the following task:
+class CouncilOrchestrator:
+    def __init__(self):
+        pass
 
-Task: {user_query}
-
-Provide a comprehensive prompt that would solve this task effectively. 
-Focus on:
-- Clear instructions
-- Proper formatting
-- Edge case handling
-- Chain-of-thought instructions if appropriate
-
-Directly provide the prompt you would use as your response. Do not add conversational filler."""}
-    else:
-        current_msg = {"role": "user", "content": user_query}
-    
-    if attachments:
-        current_msg["attachments"] = attachments
-    messages.append(current_msg)
-
-    # Query all models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
-
-    # Format results
-    stage1_results = []
-    for model, response in responses.items():
-        if response is not None:  # Only include successful responses
-            stage1_results.append({
-                "model": model,
-                "response": response.get('content', '')
-            })
-
-    return stage1_results
-
-
-async def stage2_collect_rankings(
-    user_query: str,
-    stage1_results: List[Dict[str, Any]],
-    history: List[Dict[str, Any]] = None,
-    test_cases: List[Dict[str, Any]] = None
-) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
-    """
-    Stage 2: Each model ranks the anonymized responses or tests prompts.
-
-    Args:
-        user_query: The original user query
-        stage1_results: Results from Stage 1
-        history: Optional conversation history
-
-    Returns:
-        Tuple of (rankings list, label_to_model mapping)
-    """
-    # Create anonymized labels for responses (Response A, Response B, etc.)
-    labels = [chr(65 + i) for i in range(len(stage1_results))]  # A, B, C, ...
-
-    # Create mapping from label to model name
-    label_to_model = {
-        f"Response {label}": result['model']
-        for label, result in zip(labels, stage1_results)
-    }
-
-    # Build the ranking prompt
-    responses_text = "\n\n".join([
-        f"Response {label}:\n{result['response']}"
-        for label, result in zip(labels, stage1_results)
-    ])
-
-    ranking_prompt = f"""You are evaluating different responses to the following question:
-
-Question: {user_query}
-
-Here are the responses from different models (anonymized):
-
-{responses_text}
-
-Your task:
-1. First, evaluate each response individually. For each response, explain what it does well and what it does poorly.
-2. Then, at the very end of your response, provide a final ranking.
-
-IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
-- Start with the line "FINAL RANKING:" (all caps, with colon)
-- Then list the responses from best to worst as a numbered list
-- Each line should be: number, period, space, then ONLY the response label (e.g., "1. Response A")
-- Do not add any other text or explanations in the ranking section
-
-Example of the correct format for your ENTIRE response:
-
-Response A provides good detail on X but misses Y...
-Response B is accurate but lacks depth on Z...
-Response C offers the most comprehensive answer...
-
-FINAL RANKING:
-1. Response C
-2. Response A
-3. Response B
-
-Now provide your evaluation and ranking:"""
-
-    messages = [{"role": "user", "content": ranking_prompt}]
-
-    if test_cases:
-        # If test cases exist, we run a "LIVE TEST" loop
-        # We query models to EVALUATE the performance of the generated prompts on test cases
-        test_case_context = "\n".join([f"Test Input: {tc['input']}\nExpected Output: {tc['expected']}" for tc in test_cases])
+    async def run_pipeline(
+        self,
+        user_query: str,
+        history: List[Dict[str, Any]] = None,
+        target_domain: str = None,
+        attachments: List[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute the 6-stage Council flow.
+        """
+        # 🛡️ 1. Input Safety Check
+        logger.info("[SAFETY] Checking input...")
+        input_validation = input_guard.validate(user_query)
+        policy_decision = policy_engine.check_input_policy(input_validation)
         
-        evaluation_prompt = f"""You are evaluating different AI prompt strategies for the following task:
-Task: {user_query}
+        if not policy_decision["allowed"]:
+            logger.warning(f"[SAFETY] Input blocked: {policy_decision['reason']}")
+            return self._blocked_response(policy_decision['reason'])
 
-TEST CASES:
-{test_case_context}
+        sanitized_query = input_validation["sanitized_input"]
+        context = f"Query: {sanitized_query}"
+        if attachments:
+            context += f"\n[User attached {len(attachments)} files]"
 
-PROMPT VARIATIONS:
-{responses_text}
-
-For each prompt variation, explain how well it handles the test cases. 
-Identify which one is most reliable and robust.
-
-FINAL RANKING:
-(Provide the ranking in the same numbered list format as before)"""
-        messages = [{"role": "user", "content": evaluation_prompt}]
-
-    # Get rankings from a subset of fastest models (Stage 2 specialization)
-    responses = await query_models_parallel(STAGE2_MODELS, messages)
-
-    # Format results
-    stage2_results = []
-    for model, response in responses.items():
-        if response is not None:
-            full_text = response.get('content', '')
-            parsed = parse_ranking_from_text(full_text)
-            stage2_results.append({
-                "model": model,
-                "ranking": full_text,
-                "parsed_ranking": parsed
-            })
-
-    return stage2_results, label_to_model
-
-
-async def stage3_synthesize_final(
-    user_query: str,
-    stage1_results: List[Dict[str, Any]],
-    stage2_results: List[Dict[str, Any]],
-    history: List[Dict[str, Any]] = None,
-    is_lab_mode: bool = False
-) -> Dict[str, Any]:
-    """
-    Stage 3: Chairman synthesizes final response or final prompt.
-
-    Args:
-        user_query: The original user query
-        stage1_results: Individual model responses from Stage 1
-        stage2_results: Rankings from Stage 2
-        history: Optional conversation history
-
-    Returns:
-        Dict with 'model' and 'response' keys
-    """
-    # Build comprehensive context for chairman
-    stage1_text = "\n\n".join([
-        f"Model: {result['model']}\nResponse: {result['response']}"
-        for result in stage1_results
-    ])
-
-    stage2_text = "\n\n".join([
-        f"Model: {result['model']}\nRanking: {result['ranking']}"
-        for result in stage2_results
-    ])
-
-    chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
-
-Original Question: {user_query}
-
-STAGE 1 - Individual Responses:
-{stage1_text}
-
-STAGE 2 - Peer Rankings:
-{stage2_text}
-
-Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's original question. Consider:
-- The individual responses and their insights
-- The peer rankings and what they reveal about response quality
-- Any patterns of agreement or disagreement
-
-Providing a clear, well-reasoned final answer that represents the council's collective wisdom:"""
-
-    if is_lab_mode:
-        chairman_prompt = f"""You are the Chairman of the Prompt Lab. Multiple experts have proposed different prompt engineering strategies for a task, and they have been evaluated against test data.
-
-Original Task: {user_query}
-
-PROPOSED STRATEGIES:
-{stage1_text}
-
-PEER EVALUATIONS & TEST RESULTS:
-{stage2_text}
-
-Your goal is to synthesize these into the single best possible "Master Prompt". 
-Combine the strongest elements of each strategy. Ensure the final prompt is robust, well-formatted, and directly addresses the task requirements.
-
-Output ONLY your final synthesized prompt. No other explanation."""
-
-    messages = []
-    if history:
-        for msg in history:
-            if msg['role'] == 'user':
-                messages.append({"role": "user", "content": msg['content']})
-            elif msg['role'] == 'assistant' and 'stage3' in msg:
-                messages.append({"role": "assistant", "content": msg['stage3']['response']})
-
-    messages.append({"role": "user", "content": chairman_prompt})
-
-    # Query the chairman model
-    response = await query_model(CHAIRMAN_MODEL, messages)
-
-    if response is None:
-        # Emergency Fallback: If chairman fails, use the best ranked model from Stage 1
-        if stage1_results:
-            best_model = stage1_results[0]
-            # Try to find the actual best model from aggregate rankings if available
-            # But here we just use the first available one as final fallback
-            return {
-                "model": f"Fallback ({best_model['model']})",
-                "response": best_model['response']
-            }
+        # Stage 1: Exploration (Broad & Niche)
+        logger.info("--- Stage 1: Exploration ---")
+        s1_results = await query_models_parallel(
+            STAGE1_MODELS, 
+            messages=[{"role": "user", "content": f"Explore this topic/problem from your specialized perspective. Generate 3 unique angles or analogies.\n\n{context}"}]
+        )
         
+        # Aggregate S1 findings
+        s1_summary = "\n".join([f"[{m}]: {r.get('content')}" for m, r in s1_results.items() if r and r.get('content')])
+
+        # Stage 2: Grounding (Verification)
+        logger.info("--- Stage 2: Grounding ---")
+        s2_results = await query_models_parallel(
+            STAGE2_MODELS,
+            messages=[{"role": "user", "content": f"Verify the following claims and identify any potential hallucinations or weak logic:\n\n{s1_summary}"}]
+        )
+        
+        # Stage 3: Technical Tasking (Conditional)
+        s3_results = {}
+        is_technical = "code" in sanitized_query.lower() or "implement" in sanitized_query.lower() or "python" in sanitized_query.lower()
+        if is_technical:
+            logger.info("--- Stage 3: Technical Tasking ---")
+            s3_results = await query_models_parallel(
+                STAGE3_MODELS,
+                messages=[{"role": "user", "content": f"Generate technical specifications or code snippets for this request:\n\n{context}"}]
+            )
+
+        # Stage 4: Cross-Pollination
+        logger.info("--- Stage 4: Cross-Pollination ---")
+        s4_context = f"Exploration:\n{s1_summary}\n\nGrounding:\n{str(s2_results)}"
+        s4_results = await query_models_parallel(
+            STAGE4_MODELS,
+            messages=[{"role": "user", "content": f"Synthesize these perspectives and find upgrading connections or 'cross-pollination' opportunities:\n\n{s4_context}"}]
+        )
+
+        # Stage 5: Debate (Critique)
+        logger.info("--- Stage 5: Debate ---")
+        s4_summary = "\n".join([f"[{m}]: {r.get('content')}" for m, r in s4_results.items() if r and r.get('content')])
+        s5_results = await query_models_parallel(
+            STAGE5_MODELS,
+            messages=[{"role": "user", "content": f"Critique this synthesis. What is missing? What is over-generalized?\n\n{s4_summary}"}]
+        )
+
+        # Stage 6: Synthesis (Final Answer)
+        logger.info("--- Stage 6: Synthesis ---")
+        final_context = (
+            f"Original Query: {sanitized_query}\n\n"
+            f"Exploration: {s1_summary}\n"
+            f"Grounding: {str(s2_results)}\n"
+            f"Technical: {str(s3_results)}\n"
+            f"synthesis_draft: {s4_summary}\n"
+            f"Critique: {str(s5_results)}"
+        )
+        
+        s6_response = await query_model(
+            STAGE6_MODEL,
+            messages=[{
+                "role": "system", 
+                "content": "You are the Council Head. Synthesize all perspectives into a SINGLE, coherent, high-quality Markdown response. Do not label the sections as 'Stage 1', etc., just write the solution/answer naturally and professionally."
+            }, {
+                "role": "user", 
+                "content": final_context
+            }]
+        )
+        
+        final_answer = s6_response.get("content") if s6_response else "The Council could not reach a consensus."
+
+        # 🛡️ Output Safety Check
+        if final_answer:
+            logger.info("[SAFETY] Checking output...")
+            output_validation = output_guard.check_output(final_answer)
+            policy_decision = policy_engine.check_output_policy(output_validation)
+            
+            if not policy_decision["allowed"]:
+                logger.warning(f"[SAFETY] Output blocked: {policy_decision['reason']}")
+                final_answer = f"**Safety Alert**: The response was withheld. {policy_decision['reason']}"
+
         return {
-            "model": CHAIRMAN_MODEL,
-            "response": "Error: All models failed. Please check your API keys and quota."
+            "stage1": s1_results,
+            "stage2": s2_results,
+            "stage3": s3_results,
+            "stage4": s4_results,
+            "stage5": s5_results,
+            "final_answer": final_answer
         }
 
-    return {
-        "model": CHAIRMAN_MODEL,
-        "response": response.get('content', '')
-    }
+    def _blocked_response(self, reason: str) -> Dict[str, Any]:
+        return {
+            "final_answer": f"I cannot process this request. {reason}",
+            "error": "Blocked by Safety Policy"
+        }
 
+# ═══════════════════════════════════════════
+#  Legacy Adapter / Public API
+# ═══════════════════════════════════════════
 
-def parse_ranking_from_text(ranking_text: str) -> List[str]:
+orchestrator = CouncilOrchestrator()
+
+async def run_analogy_pipeline(
+    user_query: str,
+    history: List[Dict[str, Any]] = None,
+    target_domain: str = None,
+    attachments: List[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """
-    Parse the FINAL RANKING section from the model's response.
-
-    Args:
-        ranking_text: The full text response from the model
-
-    Returns:
-        List of response labels in ranked order
+    Public entry point compatible with main.py
     """
-    import re
-
-    # Look for "FINAL RANKING:" section
-    if "FINAL RANKING:" in ranking_text:
-        # Extract everything after "FINAL RANKING:"
-        parts = ranking_text.split("FINAL RANKING:")
-        if len(parts) >= 2:
-            ranking_section = parts[1]
-            # Try to extract numbered list format (e.g., "1. Response A")
-            # This pattern looks for: number, period, optional space, "Response X"
-            numbered_matches = re.findall(r'\d+\.\s*Response [A-Z]', ranking_section)
-            if numbered_matches:
-                # Extract just the "Response X" part
-                return [re.search(r'Response [A-Z]', m).group() for m in numbered_matches]
-
-            # Fallback: Extract all "Response X" patterns in order
-            matches = re.findall(r'Response [A-Z]', ranking_section)
-            return matches
-
-    # Fallback: try to find any "Response X" patterns in order
-    matches = re.findall(r'Response [A-Z]', ranking_text)
-    return matches
-
-
-def calculate_aggregate_rankings(
-    stage2_results: List[Dict[str, Any]],
-    label_to_model: Dict[str, str]
-) -> List[Dict[str, Any]]:
-    """
-    Calculate aggregate rankings across all models.
-
-    Args:
-        stage2_results: Rankings from each model
-        label_to_model: Mapping from anonymous labels to model names
-
-    Returns:
-        List of dicts with model name and average rank, sorted best to worst
-    """
-    from collections import defaultdict
-
-    # Track positions for each model
-    model_positions = defaultdict(list)
-
-    for ranking in stage2_results:
-        ranking_text = ranking['ranking']
-
-        # Parse the ranking from the structured format
-        parsed_ranking = parse_ranking_from_text(ranking_text)
-
-        for position, label in enumerate(parsed_ranking, start=1):
-            if label in label_to_model:
-                model_name = label_to_model[label]
-                model_positions[model_name].append(position)
-
-    # Calculate average position for each model
-    aggregate = []
-    for model, positions in model_positions.items():
-        if positions:
-            avg_rank = sum(positions) / len(positions)
-            aggregate.append({
-                "model": model,
-                "average_rank": round(avg_rank, 2),
-                "rankings_count": len(positions)
-            })
-
-    # Sort by average rank (lower is better)
-    aggregate.sort(key=lambda x: x['average_rank'])
-
-    return aggregate
-
+    return await orchestrator.run_pipeline(user_query, history, target_domain, attachments)
 
 async def generate_conversation_title(user_query: str) -> str:
-    """
-    Generate a short title for a conversation based on the first user message.
-
-    Args:
-        user_query: The first user message
-
-    Returns:
-        A short title (3-5 words)
-    """
-    title_prompt = f"""Generate a very short title (3-5 words maximum) that summarizes the following question.
-The title should be concise and descriptive. Do not use quotes or punctuation in the title.
-
-Question: {user_query}
-
-Title:"""
-
-    messages = [{"role": "user", "content": title_prompt}]
-
-    # Use specialized title model
-    response = await query_model(TITLE_MODEL, messages)
-
-    if response is None:
-        # Fallback to a generic title
-        return "New Conversation"
-
-    title = response.get('content', 'New Conversation').strip()
-
-    # Clean up the title - remove quotes, limit length
-    title = title.strip('"\'')
-
-    # Truncate if too long
-    if len(title) > 50:
-        title = title[:47] + "..."
-
-    return title
-
-
-async def run_full_council(
-    user_query: str, 
-    history: List[Dict[str, Any]] = None,
-    attachments: List[Dict[str, Any]] = None,
-    test_cases: List[Dict[str, Any]] = None
-) -> Tuple[List, List, Dict, Dict]:
-    """
-    Run the complete 3-stage council process.
-
-    Args:
-        user_query: The user's question
-        history: Optional conversation history
-        attachments: Optional list of file attachments
-        test_cases: Optional list of test cases for lab mode
-
-    Returns:
-        Tuple of (stage1_results, stage2_results, stage3_result, metadata)
-    """
-    is_lab_mode = test_cases is not None and len(test_cases) > 0
-
-    # Stage 1: Collect individual responses
-    stage1_results = await stage1_collect_responses(
-        user_query, 
-        history=history, 
-        attachments=attachments,
-        is_lab_mode=is_lab_mode
+    """Generate a short title using the configured Title model."""
+    result = await query_model(
+        TITLE_MODEL,
+        messages=[{"role": "user", "content": f"Generate a 3-5 word title for: {user_query}. Return ONLY the title."}]
     )
+    if result and result.get("content"):
+        return result["content"].strip().strip('"')
+    return "New Conversation"
 
-    # If no models responded successfully, return error
-    if not stage1_results:
-        return [], [], {
-            "model": "error",
-            "response": "All models failed to respond. Please try again."
-        }, {}
-
-    # Stage 2: Collect rankings
-    stage2_results, label_to_model = await stage2_collect_rankings(
-        user_query, 
-        stage1_results, 
-        history=history,
-        test_cases=test_cases
-    )
-
-    # Calculate aggregate rankings
-    aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
-
-    # Stage 3: Synthesize final answer or prompt
-    stage3_result = await stage3_synthesize_final(
-        user_query,
-        stage1_results,
-        stage2_results,
-        history=history,
-        is_lab_mode=is_lab_mode
-    )
-
-    # Prepare metadata
-    metadata = {
-        "label_to_model": label_to_model,
-        "aggregate_rankings": aggregate_rankings
-    }
-
-    return stage1_results, stage2_results, stage3_result, metadata
+def select_domains(user_query: str, target_domain: str = None, count: int = 4) -> List[str]:
+    """Legacy helper - kept for compatibility if needed."""
+    if target_domain:
+         remaining = [d for d in DOMAIN_POOL if d.lower() != target_domain.lower()]
+         random.shuffle(remaining)
+         return [target_domain] + remaining[:count - 1]
+    
+    shuffled = DOMAIN_POOL.copy()
+    random.shuffle(shuffled)
+    return shuffled[:count]

@@ -1,25 +1,48 @@
-.stage3 {
-  background: #f0fff0;
-  border-color: #c8e6c8;
+/* ============================================
+   PARALLELS — Synthesis Report (Stage 4)
+   ============================================ */
+
+.synthesis-report {
+  padding: 0;
 }
 
-.final-response {
-  background: #ffffff;
-  padding: 20px;
-  border-radius: 6px;
-  border: 1px solid #c8e6c8;
-}
-
-.chairman-label {
-  color: #2d8a2d;
-  font-size: 12px;
-  font-family: monospace;
-  margin-bottom: 12px;
-  font-weight: 600;
-}
-
-.final-text {
-  color: #333;
+.synthesis-content {
+  font-size: 0.9rem;
   line-height: 1.7;
-  font-size: 15px;
+}
+
+.synthesis-content h2 {
+  font-size: 1.15rem;
+  background: var(--gradient-accent);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-top: 20px;
+}
+
+.synthesis-content h3 {
+  font-size: 1rem;
+  color: var(--color-accent-light);
+  margin-top: 16px;
+}
+
+.synthesis-content table {
+  margin: 12px 0;
+  font-size: 0.82rem;
+}
+
+.synthesis-content table th {
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--color-accent-light);
+}
+
+.synthesis-content strong {
+  color: var(--color-accent-light);
+}
+
+.synthesis-content blockquote {
+  border-left-color: var(--color-accent);
+  background: rgba(245, 158, 11, 0.04);
+  padding: 10px 16px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }

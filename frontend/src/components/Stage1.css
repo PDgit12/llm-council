@@ -1,65 +1,122 @@
-.stage {
-  margin: 24px 0;
-  padding: 20px;
-  background: #fafafa;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
+/* ============================================
+   PARALLELS — Domain Explorations (Stage 2 cards)
+   ============================================ */
+
+.explorations-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 12px;
 }
 
-.stage-title {
-  margin: 0 0 16px 0;
-  color: #333;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
-.tab {
-  padding: 8px 16px;
-  background: #ffffff;
-  border: 1px solid #d0d0d0;
-  border-radius: 6px 6px 0 0;
-  color: #666;
+.exploration-card {
+  border-radius: var(--radius-md);
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
   cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
+  transition: var(--transition-base);
+  overflow: hidden;
+  position: relative;
 }
 
-.tab:hover {
-  background: #f0f0f0;
-  color: #333;
-  border-color: #4a90e2;
+.exploration-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
 }
 
-.tab.active {
-  background: #ffffff;
-  color: #4a90e2;
-  border-color: #4a90e2;
-  border-bottom-color: #ffffff;
+.domain-color-1::before {
+  background: var(--domain-1);
+}
+
+.domain-color-2::before {
+  background: var(--domain-2);
+}
+
+.domain-color-3::before {
+  background: var(--domain-3);
+}
+
+.domain-color-4::before {
+  background: var(--domain-4);
+}
+
+.exploration-card:hover {
+  background: var(--glass-bg-strong);
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+}
+
+.exploration-card.expanded {
+  grid-column: 1 / -1;
+  background: var(--color-bg-tertiary);
+  border-color: var(--border-hover);
+}
+
+.exploration-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+}
+
+.exploration-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+
+.exploration-meta {
+  flex: 1;
+}
+
+.exploration-domain {
   font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--color-text-primary);
 }
 
-.tab-content {
-  background: #ffffff;
-  padding: 16px;
-  border-radius: 6px;
-  border: 1px solid #e0e0e0;
+.exploration-model {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  margin-top: 2px;
 }
 
-.model-name {
-  color: #888;
-  font-size: 12px;
-  margin-bottom: 12px;
-  font-family: monospace;
+.expand-arrow {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  transition: var(--transition-fast);
 }
 
-.response-text {
-  color: #333;
-  line-height: 1.6;
+.exploration-body {
+  border-top: 1px solid var(--border-subtle);
+  animation: fadeExpand 0.3s ease;
+  font-size: 0.85rem;
+}
+
+@keyframes fadeExpand {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+
+  to {
+    opacity: 1;
+    max-height: 2000px;
+  }
+}
+
+.exploration-error {
+  padding: 10px 14px;
+  font-size: 0.75rem;
+  color: var(--color-error);
+  border-top: 1px solid var(--border-subtle);
+}
+
+@media (max-width: 640px) {
+  .explorations-grid {
+    grid-template-columns: 1fr;
+  }
 }

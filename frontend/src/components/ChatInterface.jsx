@@ -1,201 +1,204 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { api, API_BASE_URL } from '../api';
 import FileUploader from './FileUploader';
-import TestCaseManager from './TestCaseManager';
-import Stage1 from './Stage1';
-import Stage2 from './Stage2';
-import Stage3 from './Stage3';
+import { api } from '../api';
 import './ChatInterface.css';
 
-export default function ChatInterface({
-  conversation,
-  onSendMessage,
-  onAddTestCase,
-  onDeleteTestCase,
-  isLoading,
-}) {
+function ChatInterface({ conversation, onSendMessage, isLoading }) {
   const [input, setInput] = useState('');
-  const [attachments, setAttachments] = useState([]);
+  const [files, setFiles] = useState([]);
   const messagesEndRef = useRef(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   useEffect(() => {
-    scrollToBottom();
-  }, [conversation]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [conversation?.messages]);
 
   const handleFileSelect = async (file) => {
     try {
-      // Optimistic UI could be added here
-      const uploaded = await api.uploadFile(file);
-      setAttachments(prev => [...prev, uploaded]);
+      // Upload to backend to get a path/url
+      // OR convert to base64 to send in message payload.
+      // Given council.py structure, sending base64 in payload is cleaner for the "stateless" orchestrator,
+      // but main.py has an /api/upload endpoint.
+      // Let's use the /api/upload endpoint for better performance (not bloating JSON).
+
+      const result = await api.uploadFile(file);
+      // Result should be { path: "/uploads/...", filename: "...", ... }
+      setFiles(prev => [...prev, result]);
     } catch (err) {
       console.error("Upload failed", err);
-      alert("Failed to upload file");
+      alert("Failed to upload file.");
     }
   };
 
-  const removeAttachment = (index) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index));
+  const removeFile = (index) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if ((input.trim() || attachments.length > 0) && !isLoading) {
-      onSendMessage(input, attachments);
-      setInput('');
-      setAttachments([]);
-    }
+    if ((!input.trim() && files.length === 0) || isLoading) return;
+
+    // Pass input AND attachments
+    // We expect onSendMessage to handle the payload construction
+    // OR we modify onSendMessage signature.
+    // Looking at App.jsx (likely parent), it calls api.sendMessageStream.
+    // We should pass an object or arguments. 
+    // Let's assume onSendMessage takes (text, attachments).
+
+    const attachments = files.map(f => ({
+      path: f.path,
+      content_type: f.content_type,
+      name: f.filename
+    }));
+
+    onSendMessage(input, attachments);
+
+    setInput('');
+    setFiles([]);
   };
 
-  const handleKeyDown = (e) => {
-    // Submit on Enter (without Shift)
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
-    }
+  const handleExampleClick = (text) => {
+    setInput(text);
+    // Optional: Auto-send or just populate
+    // onSendMessage(text, []); 
   };
 
-  if (!conversation) {
-    return (
-      <div className="chat-interface">
-        <div className="empty-state">
-          <h2>Welcome to LLM Council</h2>
-          <p>Create a new conversation to get started</p>
-        </div>
-      </div>
-    );
-  }
+  if (!conversation) return <div className="chat-loading">Loading...</div>;
+
+  const isEmpty = conversation.messages?.length === 0;
 
   return (
     <div className="chat-interface">
-      <div className="messages-container">
-        <TestCaseManager
-          conversation={conversation}
-          onAddTestCase={onAddTestCase}
-          onDeleteTestCase={onDeleteTestCase}
-        />
-
-        {conversation.messages.length === 0 ? (
+      <div className="messages-area">
+        {isEmpty && (
           <div className="empty-state">
-            <h2>{conversation?.test_cases?.length > 0 ? "Prompt Optimization Lab" : "Welcome to LLM Council"}</h2>
-            <p>
-              {conversation?.test_cases?.length > 0
-                ? "Enter your task below to generate optimized prompts vetted against your test cases."
-                : "Ask a question and get a peer-reviewed answer from the council."}
-            </p>
-          </div>
-        ) : (
-          conversation.messages.map((msg, index) => (
-            <div key={index} className="message-group">
-              {msg.role === 'user' ? (
-                <div className="user-message">
-                  <div className="message-label">You</div>
-                  <div className="message-content">
-                    {msg.attachments && msg.attachments.length > 0 && (
-                      <div className="message-attachments">
-                        {msg.attachments.map((att, i) => (
-                          <div key={i} className="attachment-preview">
-                            {att.content_type?.startsWith('image/') ? (
-                              <img src={`${API_BASE_URL}${att.path}`} alt={att.filename} />
-                            ) : (
-                              <div className="file-icon">📄 {att.filename}</div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="markdown-content">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="assistant-message">
-                  <div className="message-label">LLM Council</div>
-
-                  {/* Stage 1 */}
-                  {msg.loading?.stage1 && (
-                    <div className="stage-loading">
-                      <div className="spinner"></div>
-                      <span>Running Stage 1: Collecting individual responses...</span>
-                    </div>
-                  )}
-                  {msg.stage1 && <Stage1 responses={msg.stage1} />}
-
-                  {/* Stage 2 */}
-                  {msg.loading?.stage2 && (
-                    <div className="stage-loading">
-                      <div className="spinner"></div>
-                      <span>Running Stage 2: Peer rankings...</span>
-                    </div>
-                  )}
-                  {msg.stage2 && (
-                    <Stage2
-                      rankings={msg.stage2}
-                      labelToModel={msg.metadata?.label_to_model}
-                      aggregateRankings={msg.metadata?.aggregate_rankings}
-                    />
-                  )}
-
-                  {/* Stage 3 */}
-                  {msg.loading?.stage3 && (
-                    <div className="stage-loading">
-                      <div className="spinner"></div>
-                      <span>Running Stage 3: Final synthesis...</span>
-                    </div>
-                  )}
-                  {msg.stage3 && <Stage3 finalResponse={msg.stage3} />}
-                </div>
-              )}
+            <div className="empty-content">
+              <div className="empty-icon">⌘</div>
+              <h2 className="empty-title">Good Afternoon</h2>
+              <p className="empty-subtitle">What's on your mind?</p>
             </div>
-          ))
-        )}
 
-        {isLoading && (
-          <div className="loading-indicator">
-            <div className="spinner"></div>
-            <span>Consulting the council...</span>
+            <div className="example-cards">
+              <div className="example-card" onClick={() => handleExampleClick("Analyze these quarterly reports for trends")}>
+                <div className="card-icon">📊</div>
+                <div className="card-title">Analyze quarterly reports</div>
+              </div>
+              <div className="example-card" onClick={() => handleExampleClick("Debug this React component performance issue")}>
+                <div className="card-icon">🐞</div>
+                <div className="card-title">Debug React performance</div>
+              </div>
+              <div className="example-card" onClick={() => handleExampleClick("Compare marketing strategies for a SaaS launch")}>
+                <div className="card-icon">🚀</div>
+                <div className="card-title">SaaS launch strategies</div>
+              </div>
+              <div className="example-card" onClick={() => handleExampleClick("Explain quantum entanglement to a 5 year old")}>
+                <div className="card-icon">⚛️</div>
+                <div className="card-title">Explain quantum physics</div>
+              </div>
+            </div>
           </div>
         )}
 
+        {conversation.messages?.map((msg, idx) => (
+          <div key={idx} className={`message ${msg.role}`}>
+            {msg.role === 'user' ? (
+              <div className="user-bubble">
+                {msg.attachments && msg.attachments.length > 0 && (
+                  <div className="message-attachments">
+                    {msg.attachments.map((att, i) => (
+                      <div key={i} className="attachment-chip">
+                        📎 {att.name || 'File'}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div>{msg.content}</div>
+              </div>
+            ) : (
+              <div className="assistant-response">
+                {/* Only show the final answer or a clean loading state */}
+                {msg.final_answer ? (
+                  <div className="markdown-content">
+                    <ReactMarkdown>{msg.final_answer}</ReactMarkdown>
+                  </div>
+                ) : (
+                  /* Robust loading text if no final answer yet */
+                  <div className="processing-indicator">
+                    <span className="stage-spinner" />
+                    {msg.loading?.stage1 ? "Browsing..." : "Thinking..."}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
         <div ref={messagesEndRef} />
       </div>
 
-      <form className="input-form" onSubmit={handleSubmit}>
-        {attachments.length > 0 && (
-          <div className="input-attachments">
-            {attachments.map((att, i) => (
-              <div key={i} className="attachment-chip">
-                <span>{att.filename}</span>
-                <button type="button" onClick={() => removeAttachment(i)}>×</button>
-              </div>
-            ))}
+      {/* Floating Input Area */}
+      <div className="input-area">
+        <form className="input-wrapper" onSubmit={handleSubmit}>
+          {/* Top: Text Input */}
+          <div className="input-top">
+            <input
+              type="text"
+              className="message-input"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask anything..."
+              disabled={isLoading}
+              autoFocus
+            />
           </div>
-        )}
-        <div className="input-wrapper">
-          <FileUploader onFileSelect={handleFileSelect} disabled={isLoading} />
-          <textarea
-            className="message-input"
-            placeholder={conversation?.test_cases?.length > 0 ? "Describe the task to optimize..." : "Ask your question... (Shift+Enter for new line, Enter to send)"}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isLoading}
-            rows={3}
-          />
-        </div>
-        <button
-          type="submit"
-          className="send-button"
-          disabled={(!input.trim() && attachments.length === 0) || isLoading}
-        >
-          Send
-        </button>
-      </form>
-    </div >
+
+          {/* Middle: File Chips (if any) */}
+          {files.length > 0 && (
+            <div className="file-chips">
+              {files.map((file, i) => (
+                <div key={i} className="file-chip">
+                  <span className="file-icon">📄</span>
+                  <span className="file-name">{file.filename.substring(0, 15)}...</span>
+                  <button type="button" className="remove-file" onClick={() => removeFile(i)}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Bottom: Tools & Send */}
+          <div className="input-bottom">
+            <div className="input-tools">
+              <FileUploader onFileSelect={handleFileSelect} disabled={isLoading} />
+              {/* Mock focus selector */}
+              <button type="button" className="tool-btn" title="Search Mode">
+                <span>Writing Styles</span>
+                <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto', fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
+                <div style={{ width: '24px', height: '14px', background: '#8b5cf6', borderRadius: '10px', position: 'relative' }}>
+                  <div style={{ width: '10px', height: '10px', background: 'white', borderRadius: '50%', position: 'absolute', right: '2px', top: '2px' }}></div>
+                </div>
+                <span>Citation</span>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="send-btn"
+              disabled={(!input.trim() && files.length === 0) || isLoading}
+            >
+              {isLoading ? (
+                <span className="send-spinner">⟳</span>
+              ) : (
+                '↑'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
+
+export default ChatInterface;
