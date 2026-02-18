@@ -2,7 +2,7 @@
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -51,7 +51,7 @@ def create_conversation(conversation_id: str) -> Dict[str, Any]:
 
     conversation = {
         "id": conversation_id,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "title": "New Task",
         "messages": [],
         "test_cases": []
@@ -167,7 +167,7 @@ def add_test_case(conversation_id: str, input_data: str, expected_output: str) -
         raise ValueError(f"Conversation {conversation_id} not found")
     
     test_case = {
-        "id": str(datetime.now().timestamp()).replace('.', ''),
+        "id": str(datetime.now(timezone.utc).timestamp()).replace('.', ''),
         "input": input_data,
         "expected": expected_output
     }
