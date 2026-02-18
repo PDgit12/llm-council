@@ -31,6 +31,28 @@ from config import (
 )
 import re
 
+# ═══════════════════════════════════════════
+#  CORS CONFIGURATION
+# ═══════════════════════════════════════════
+
+allowed_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+# Construct regex for allowed origins (localhost, Firebase, Render)
+origin_regex_list = [
+    r"http://localhost:\d+",
+    r"http://127\.0\.0\.1:\d+",
+    r"https://parallels-.*\.onrender\.com",
+]
+
+if FIREBASE_PROJECT_ID:
+    origin_regex_list.append(rf"https://.*{re.escape(FIREBASE_PROJECT_ID)}.*\.web\.app")
+    origin_regex_list.append(rf"https://.*{re.escape(FIREBASE_PROJECT_ID)}.*\.firebaseapp\.com")
+
+allow_origin_regex = "|".join(origin_regex_list)
+
 app = FastAPI(title="Parallels API", description="Cross-Domain Analogy Engine")
 
 # Serve uploaded files statically
@@ -93,6 +115,14 @@ def check_rate_limit(request: Request, category: str, limit: int):
             status_code=429,
             detail=f"Rate limit exceeded. Try again in a moment."
         )
+
+
+def validate_uuid(value: str):
+    """Validate that the string is a valid UUID."""
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid conversation ID format")
 
 
 # ═══════════════════════════════════════════
@@ -235,6 +265,7 @@ async def create_conversation(request: Request, body: CreateConversationRequest)
 async def get_conversation(request: Request, conversation_id: str):
     """Get a specific exploration with all its messages."""
     check_rate_limit(request, "global", RATE_LIMIT_GLOBAL)
+    validate_uuid(conversation_id)
     conversation = storage.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Exploration not found")
@@ -245,6 +276,7 @@ async def get_conversation(request: Request, conversation_id: str):
 async def delete_conversation(request: Request, conversation_id: str):
     """Delete a specific exploration."""
     check_rate_limit(request, "global", RATE_LIMIT_GLOBAL)
+    validate_uuid(conversation_id)
     success = storage.delete_conversation(conversation_id)
     if not success:
         raise HTTPException(status_code=404, detail="Exploration not found")
@@ -257,6 +289,7 @@ async def delete_conversation(request: Request, conversation_id: str):
 async def send_message_stream(request: Request, conversation_id: str, body: SendMessageRequest):
     """Send a message and stream the 4-stage analogy pipeline via SSE."""
     check_rate_limit(request, "message", RATE_LIMIT_MESSAGE)
+    validate_uuid(conversation_id)
 
     conversation = storage.get_conversation(conversation_id)
     if conversation is None:
