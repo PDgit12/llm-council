@@ -36,6 +36,24 @@ app = FastAPI(title="Parallels API", description="Cross-Domain Analogy Engine")
 # Serve uploaded files statically
 app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 
+# ═══════════════════════════════════════════
+#  CORS CONFIGURATION
+# ═══════════════════════════════════════════
+
+allowed_origins = [
+    "http://localhost:5173",  # Vite dev server
+    "http://localhost:4173",  # Vite preview
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:4173",
+]
+
+if FIREBASE_PROJECT_ID:
+    allowed_origins.append(f"https://{FIREBASE_PROJECT_ID}.web.app")
+    allowed_origins.append(f"https://{FIREBASE_PROJECT_ID}.firebaseapp.com")
+
+# Allow Render PR previews: https://parallels-*.onrender.com
+allow_origin_regex = r"https://parallels-.*\.onrender\.com"
+
 # CORS for frontend
 app.add_middleware(
     CORSMiddleware,
