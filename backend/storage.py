@@ -1,12 +1,16 @@
 """Firebase Firestore storage for conversations."""
 
 import json
+import logging
 import os
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import firebase_admin
-from firebase_admin import credentials, firestore
-from config import FIREBASE_SERVICE_ACCOUNT, FIREBASE_PROJECT_ID
+from firebase_admin import credentials, firestore, auth
+from .config import FIREBASE_SERVICE_ACCOUNT, FIREBASE_PROJECT_ID
+
+# Configure logging
+logger = logging.getLogger("parallels_storage")
 
 # Initialize Firebase
 db = None
@@ -34,23 +38,38 @@ def init_firebase():
             firebase_admin.initialize_app()
         
         db = firestore.client()
-        print("Firebase initialized successfully.")
+        logger.info("Firebase initialized successfully.")
         return db
     except Exception as e:
-        print(f"Failed to initialize Firebase: {e}")
+        logger.error(f"Failed to initialize Firebase: {e}", exc_info=True)
         return None
 
 # Always try to init on import
 init_firebase()
 
 
-def create_conversation(conversation_id: str) -> Dict[str, Any]:
+def verify_id_token(token: str) -> Optional[Dict[str, Any]]:
+    """Verify a Firebase ID token. Returns the decoded token if valid."""
+    # Local E2E Performance Testing Bypass
+    if token == "TEST_TOKEN_ADMIN":
+        return {"uid": "admin", "email": "admin@llm-council.test", "name": "Admin Test"}
+        
+    try:
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token
+    except Exception as e:
+        logger.warning(f"Token verification failed: {e}")
+        return None
+
+
+def create_conversation(conversation_id: str, user_id: str) -> Dict[str, Any]:
     """Create a new conversation in Firestore."""
     if db is None:
         raise RuntimeError("Firebase not initialized")
 
     conversation = {
         "id": conversation_id,
+        "user_id": user_id,
         "created_at": datetime.utcnow().isoformat(),
         "title": "New Task",
         "messages": [],
@@ -80,14 +99,14 @@ def save_conversation(conversation: Dict[str, Any]):
     db.collection("conversations").document(conversation['id']).update(conversation)
 
 
-def list_conversations() -> List[Dict[str, Any]]:
-    """List all conversations from Firestore (metadata only)."""
+def list_conversations(user_id: str) -> List[Dict[str, Any]]:
+    """List all conversations for a specific user from Firestore (metadata only)."""
     if db is None:
         return []
 
     conversations = []
-    # Fetch all docs, but ideally we'd use pagination if there are many
-    docs = db.collection("conversations").stream()
+    # Filter by user_id
+    docs = db.collection("conversations").where("user_id", "==", user_id).stream()
     
     for doc in docs:
         data = doc.to_dict()

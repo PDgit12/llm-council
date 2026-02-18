@@ -1,16 +1,26 @@
-/**
- * API client for the Parallels backend.
- */
+import { auth } from './firebase';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001';
 export const API_BASE_URL = API_BASE;
+
+/**
+ * Helper to get Auth headers
+ */
+const getHeaders = async () => {
+  const token = await auth.currentUser?.getIdToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  };
+};
 
 export const api = {
   /**
    * List all explorations.
    */
   async listConversations() {
-    const response = await fetch(`${API_BASE}/api/conversations`);
+    const headers = await getHeaders();
+    const response = await fetch(`${API_BASE}/api/conversations`, { headers });
     if (!response.ok) {
       throw new Error('Failed to list explorations');
     }
@@ -21,11 +31,10 @@ export const api = {
    * Create a new exploration.
    */
   async createConversation() {
+    const headers = await getHeaders();
     const response = await fetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({}),
     });
     if (!response.ok) {
@@ -38,8 +47,10 @@ export const api = {
    * Get a specific exploration.
    */
   async getConversation(conversationId) {
+    const headers = await getHeaders();
     const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}`
+      `${API_BASE}/api/conversations/${conversationId}`,
+      { headers }
     );
     if (!response.ok) {
       throw new Error('Failed to get exploration');
@@ -54,13 +65,12 @@ export const api = {
    * @param {function} onEvent - (eventType, data) => void
    */
   async sendMessageStream(conversationId, payload, onEvent) {
+    const headers = await getHeaders();
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(payload),
       }
     );
@@ -97,11 +107,16 @@ export const api = {
    * Upload a file.
    */
   async uploadFile(file) {
+    const authHeaders = await getHeaders();
+    // Remove Content-Type so browser sets it with boundary for FormData
+    delete authHeaders['Content-Type'];
+    
     const formData = new FormData();
     formData.append('file', file);
 
     const response = await fetch(`${API_BASE}/api/upload`, {
       method: 'POST',
+      headers: authHeaders,
       body: formData,
     });
 
@@ -115,10 +130,12 @@ export const api = {
    * Delete an exploration.
    */
   async deleteConversation(conversationId) {
+    const headers = await getHeaders();
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}`,
       {
         method: 'DELETE',
+        headers
       }
     );
     if (!response.ok) {

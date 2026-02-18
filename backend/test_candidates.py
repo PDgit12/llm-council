@@ -22,27 +22,22 @@ load_env_manual()
 from openrouter import query_model
 
 CANDIDATES = [
-    # Top Tier Free
-    "google/gemini-2.0-flash-lite-preview-02-05:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
+    # Proven Working (BaseLine)
+    "google/gemma-3-27b-it:free",
+    "google/gemma-3-12b-it:free",
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+    "stepfun/step-3.5-flash:free",
+    "arcee-ai/trinity-large-preview:free",
+
+    # Potential Upgrades for Llama 3.3 (Broad Context)
+    "microsoft/phi-3-medium-128k-instruct:free",
+    "mistralai/mistral-7b-instruct-v0.3:free",
+    "huggingfaceh4/zephyr-7b-beta:free",
     
-    # DeepSeek
-    "deepseek/deepseek-r1:free", # Retrying
-    "deepseek/deepseek-r1-distill-llama-70b:free",
-    "deepseek/deepseek-chat:free",
-    
-    # Mid Tier
-    "mistralai/mistral-7b-instruct:free",
-    "mistralai/mistral-small-24b-instruct-2501:free",
-    "microsoft/phi-3-mini-128k-instruct:free",
-    
-    # Coding
-    "qwen/qwen-2.5-coder-32b-instruct:free",
-    "meta-llama/codellama-70b-instruct:free",
-    
-    # Older/Other
-    "meta-llama/llama-3-8b-instruct:free",
-    "sophosympatheia/midnight-rose-70b-v2.0.3:free" 
+    # Potential Upgrades for Qwen Coder (Coding)
+    "codellama/codellama-34b-instruct:free",
+    "google/gemini-2.0-pro-exp-02-05:free", # Trying experimental
+    "meta-llama/llama-3-8b-instruct:free",  # Smaller llama might not rate limit
 ]
 
 async def test_candidates():

@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 # Ensure we can import from backend
 sys.path.append(os.getcwd())
 
-from config import COUNCIL_MODELS, STAGE2_MODELS, CHAIRMAN_MODEL
-from openrouter import query_model
+from .config import STAGE1_MODELS, STAGE2_MODELS, STAGE6_MODEL
+from .openrouter import query_model
 
 load_dotenv()
 
@@ -15,7 +15,7 @@ async def test_models():
     print("--- TESTING COUNCIL MODELS ---")
     messages = [{"role": "user", "content": "Say 'ok' if you can hear me."}]
     
-    all_models = list(set(COUNCIL_MODELS + STAGE2_MODELS + [CHAIRMAN_MODEL]))
+    all_models = list(set(STAGE1_MODELS + STAGE2_MODELS + [STAGE6_MODEL]))
     
     for model in all_models:
         print(f"Testing {model}...", end="", flush=True)
