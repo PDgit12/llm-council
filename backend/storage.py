@@ -103,6 +103,35 @@ def list_conversations() -> List[Dict[str, Any]]:
     return conversations
 
 
+def count_conversations() -> int:
+    """Count all conversations in Firestore."""
+    if db is None:
+        return 0
+
+    try:
+        # Use aggregation query for efficiency
+        query = db.collection("conversations")
+        count_query = query.count()
+        snapshot = count_query.get()
+
+        # Handle different return types from SDK versions
+        if isinstance(snapshot, list) and len(snapshot) > 0:
+            first = snapshot[0]
+            if isinstance(first, list) and len(first) > 0:
+                return int(first[0].value)
+            elif hasattr(first, 'value'):
+                return int(first.value)
+
+        # Fallback for unexpected structure
+        print(f"Unexpected aggregation result structure: {snapshot}")
+        return len(list_conversations())
+
+    except Exception as e:
+        print(f"Error counting conversations: {e}")
+        # Fallback to inefficient method
+        return len(list_conversations())
+
+
 def add_user_message(
     conversation_id: str, 
     content: str, 

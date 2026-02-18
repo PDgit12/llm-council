@@ -208,8 +208,8 @@ async def create_conversation(request: Request, body: CreateConversationRequest)
     """Create a new exploration."""
     check_rate_limit(request, "global", RATE_LIMIT_GLOBAL)
 
-    existing = storage.list_conversations()
-    if len(existing) >= MAX_CONVERSATIONS:
+    count = storage.count_conversations()
+    if count >= MAX_CONVERSATIONS:
         raise HTTPException(
             status_code=429,
             detail=f"Maximum of {MAX_CONVERSATIONS} explorations reached. Please delete old ones."
