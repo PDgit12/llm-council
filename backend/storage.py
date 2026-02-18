@@ -205,12 +205,9 @@ def add_user_message(
 
 def add_assistant_message(
     conversation_id: str,
-    stage1: Optional[List[Dict[str, Any]]] = None,
-    stage2: Optional[List[Dict[str, Any]]] = None,
-    stage3: Optional[Union[Dict[str, Any], str]] = None, # Can be passed as final string by legacy code
-    final_answer: Optional[str] = None
+    result: Dict[str, Any]
 ):
-    """Add an assistant message with all stages."""
+    """Add an assistant message with the full pipeline result."""
     conversation = get_conversation(conversation_id)
     if conversation is None:
         raise ValueError(f"Conversation {conversation_id} not found")
@@ -218,29 +215,17 @@ def add_assistant_message(
     if "messages" not in conversation:
         conversation["messages"] = []
 
-    # Handle argument flexibility
-    actual_stage3 = {}
-    actual_final_answer = final_answer
+    message = {
+        "role": "assistant"
+    }
+    # Merge all result fields (stage1, stage2, final_answer, etc.)
+    message.update(result)
 
-    if isinstance(stage3, str):
-        actual_final_answer = stage3
-    elif isinstance(stage3, dict):
-        actual_stage3 = stage3
+    # Ensure standard 'content' field is present for compatibility
+    if "content" not in message and "final_answer" in message:
+        message["content"] = message["final_answer"]
 
-    # If final_answer wasn't provided but logic implies it should exist
-    if actual_final_answer is None and isinstance(stage3, str):
-         actual_final_answer = stage3
-
-    conversation["messages"].append({
-        "role": "assistant",
-        "stage1": stage1 or [],
-        "stage2": stage2 or [],
-        "stage3": actual_stage3,
-        "final_answer": actual_final_answer or "",
-        "timestamp": datetime.utcnow().isoformat()
-    })
-
-    conversation["message_count"] = len(conversation["messages"])
+    conversation["messages"].append(message)
     save_conversation(conversation)
 
 

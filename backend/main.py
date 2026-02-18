@@ -283,22 +283,13 @@ async def send_message_stream(request: Request, conversation_id: str, body: Send
 
             # Title detection (if needed)
             if title_task:
-                try:
-                    title = await title_task
-                    storage.update_conversation_title(conversation_id, title)
-                    yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
-                except Exception as e:
-                    print(f"Error generating title: {e}")
+                title = await title_task
+                storage.update_conversation_title(conversation_id, title)
+                yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
 
             # Save to storage
-            # We explicitly map the result keys to storage arguments for clarity
-            storage.add_assistant_message(
-                conversation_id=conversation_id,
-                stage1=result.get("stage1"),
-                stage2=result.get("stage2"),
-                stage3=result.get("stage3"),
-                final_answer=result.get("final_answer", "")
-            )
+            # The 'result' contains all stages and 'final_answer'.
+            storage.add_assistant_message(conversation_id, result)
             
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
