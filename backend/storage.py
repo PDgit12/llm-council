@@ -8,6 +8,8 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from config import FIREBASE_SERVICE_ACCOUNT, FIREBASE_PROJECT_ID
 
+CONVERSATIONS_COLLECTION = "conversations"
+
 # Initialize Firebase
 db = None
 
@@ -57,7 +59,7 @@ def create_conversation(conversation_id: str) -> Dict[str, Any]:
         "test_cases": []
     }
 
-    db.collection("conversations").document(conversation_id).set(conversation)
+    db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).set(conversation)
     return conversation
 
 
@@ -66,7 +68,7 @@ def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
     if db is None:
         return None
 
-    doc = db.collection("conversations").document(conversation_id).get()
+    doc = db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).get()
     if doc.exists:
         return doc.to_dict()
     return None
@@ -77,7 +79,7 @@ def save_conversation(conversation: Dict[str, Any]):
     if db is None:
         return
 
-    db.collection("conversations").document(conversation['id']).update(conversation)
+    db.collection(CONVERSATIONS_COLLECTION).document(conversation['id']).update(conversation)
 
 
 def list_conversations() -> List[Dict[str, Any]]:
@@ -87,7 +89,7 @@ def list_conversations() -> List[Dict[str, Any]]:
 
     conversations = []
     # Fetch all docs, but ideally we'd use pagination if there are many
-    docs = db.collection("conversations").stream()
+    docs = db.collection(CONVERSATIONS_COLLECTION).stream()
     
     for doc in docs:
         data = doc.to_dict()
@@ -157,7 +159,7 @@ def update_conversation_title(conversation_id: str, title: str):
     if db is None:
         return
 
-    db.collection("conversations").document(conversation_id).update({"title": title})
+    db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).update({"title": title})
 
 
 def add_test_case(conversation_id: str, input_data: str, expected_output: str) -> Dict[str, Any]:
@@ -211,5 +213,5 @@ def delete_conversation(conversation_id: str) -> bool:
     if db is None:
         return False
 
-    db.collection("conversations").document(conversation_id).delete()
+    db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).delete()
     return True
