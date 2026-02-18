@@ -10,6 +10,8 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from config import FIREBASE_SERVICE_ACCOUNT, FIREBASE_PROJECT_ID, DATA_DIR
 
+CONVERSATIONS_COLLECTION = "conversations"
+
 # Initialize Firebase
 db = None
 
@@ -82,11 +84,7 @@ def create_conversation(conversation_id: str) -> Dict[str, Any]:
         "test_cases": []
     }
 
-    if db:
-        db.collection("conversations").document(conversation_id).set(conversation)
-    else:
-        _save_local(conversation)
-
+    db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).set(conversation)
     return conversation
 
 
@@ -97,26 +95,26 @@ def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
         if doc.exists:
             return doc.to_dict()
         return None
-    else:
-        return _load_local(conversation_id)
+
+    doc = db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).get()
+    if doc.exists:
+        return doc.to_dict()
+    return None
 
 
 def save_conversation(conversation: Dict[str, Any]):
-    """Save a conversation."""
-    if db:
-        db.collection("conversations").document(conversation['id']).update(conversation)
-    else:
-        _save_local(conversation)
+    """Save a conversation to Firestore."""
+    if db is None:
+        return
+
+    db.collection(CONVERSATIONS_COLLECTION).document(conversation['id']).update(conversation)
 
 
 def list_conversations() -> List[Dict[str, Any]]:
     """List all conversations (metadata only)."""
     conversations = []
-    # Fetch metadata only to optimize bandwidth
-    # Ideally we'd also use pagination if there are many
-    docs = db.collection("conversations").select(
-        ["id", "created_at", "title", "message_count"]
-    ).stream()
+    # Fetch all docs, but ideally we'd use pagination if there are many
+    docs = db.collection(CONVERSATIONS_COLLECTION).stream()
     
     for doc in docs:
         data = doc.to_dict()
@@ -219,13 +217,10 @@ def add_assistant_message(
 
 def update_conversation_title(conversation_id: str, title: str):
     """Update the title of a conversation."""
-    if db:
-        db.collection("conversations").document(conversation_id).update({"title": title})
-    else:
-        conversation = _load_local(conversation_id)
-        if conversation:
-            conversation["title"] = title
-            _save_local(conversation)
+    if db is None:
+        return
+
+    db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).update({"title": title})
 
 
 def add_test_case(conversation_id: str, input_data: str, expected_output: str) -> Dict[str, Any]:
@@ -285,3 +280,6 @@ def delete_conversation(conversation_id: str) -> bool:
             os.remove(path)
             return True
         return False
+
+    db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).delete()
+    return True

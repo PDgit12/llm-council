@@ -37,7 +37,7 @@ def migrate():
                 print(f"Migrating {data['id']} ({data.get('title', 'Untitled')})...")
                 
                 # Check if it already exists to avoid duplicates (optional)
-                doc_ref = db.collection("conversations").document(data['id'])
+                doc_ref = db.collection(storage.CONVERSATIONS_COLLECTION).document(data['id'])
                 if doc_ref.get().exists:
                     print(f"  - Document {data['id']} already exists in Firestore. Overwriting.")
                 
