@@ -24,8 +24,20 @@ def _load_local_image(path: str) -> Optional[PIL.Image.Image]:
     elif not clean_path.startswith('data/'):
         clean_path = os.path.join('data/uploads', os.path.basename(path))
 
-    if os.path.exists(clean_path):
-        return PIL.Image.open(clean_path)
+    try:
+        # Resolve absolute paths to prevent traversal
+        abs_path = os.path.abspath(clean_path)
+        data_dir = os.path.abspath('data')
+
+        # Security check: Ensure path is within data directory
+        if os.path.commonpath([data_dir, abs_path]) != data_dir:
+            return None
+
+        if os.path.exists(abs_path):
+            return PIL.Image.open(abs_path)
+    except Exception:
+        pass
+
     return None
 
 async def query_model_direct_google(
