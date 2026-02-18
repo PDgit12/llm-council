@@ -33,9 +33,6 @@ async def query_model_direct_google(
     
     for attempt in range(max_retries):
         try:
-            # Find system instruction
-            system_instruction = next((m['content'] for m in messages if m.get('role') == 'system'), None)
-            
             model = genai.GenerativeModel(
                 model_name,
                 system_instruction=system_instruction
