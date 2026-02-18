@@ -14,7 +14,7 @@ import time
 import os
 
 from council import (
-    generate_conversation_title, run_analogy_pipeline, select_domains
+    generate_conversation_title, run_analogy_pipeline
 )
 import storage
 from config import (
