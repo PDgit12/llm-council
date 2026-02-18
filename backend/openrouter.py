@@ -1,6 +1,9 @@
 """OpenRouter API client for making LLM requests."""
 
+import os
+import asyncio
 import httpx
+import PIL.Image
 import google.generativeai as genai
 from typing import List, Dict, Any, Optional
 from config import OPENROUTER_API_KEY, OPENROUTER_API_URL, GOOGLE_API_KEY, MODEL_TIMEOUT
@@ -9,15 +12,25 @@ from config import OPENROUTER_API_KEY, OPENROUTER_API_URL, GOOGLE_API_KEY, MODEL
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
 
+def _load_local_image(path: str) -> Optional[PIL.Image.Image]:
+    """Helper to load image if path exists."""
+    # Remove leading /uploads/ or / if present to get relative path from root
+    clean_path = path.lstrip('/')
+    if clean_path.startswith('uploads/'):
+        clean_path = os.path.join('data', clean_path)
+    elif not clean_path.startswith('data/'):
+        clean_path = os.path.join('data/uploads', os.path.basename(path))
+
+    if os.path.exists(clean_path):
+        return PIL.Image.open(clean_path)
+    return None
+
 async def query_model_direct_google(
     model_name: str,
     messages: List[Dict[str, str]],
     timeout: float = MODEL_TIMEOUT
 ) -> Optional[Dict[str, Any]]:
     """Query Google Gemini API directly using the SDK with retries."""
-    import asyncio
-    import PIL.Image
-    import os
     
     # Extract name after 'google/' if present
     if model_name.startswith("google/"):
@@ -46,19 +59,6 @@ async def query_model_direct_google(
             
             # Convert messages to Gemini history format and handle images
             gemini_history = []
-            
-            # Helper to load image if path exists
-            def load_image(path):
-                # Remove leading /uploads/ or / if present to get relative path from root
-                clean_path = path.lstrip('/')
-                if clean_path.startswith('uploads/'):
-                    clean_path = os.path.join('data', clean_path)
-                elif not clean_path.startswith('data/'):
-                    clean_path = os.path.join('data/uploads', os.path.basename(path))
-                
-                if os.path.exists(clean_path):
-                    return PIL.Image.open(clean_path)
-                return None
 
             # Process history (excluding last message)
             for msg in conv_messages[:-1]:
@@ -69,7 +69,7 @@ async def query_model_direct_google(
                 if 'attachments' in msg and msg['attachments']:
                     for att in msg['attachments']:
                         if att.get('content_type', '').startswith('image/'):
-                            img = load_image(att['path'])
+                            img = _load_local_image(att['path'])
                             if img:
                                 parts.append(img)
                                 
@@ -81,7 +81,7 @@ async def query_model_direct_google(
             if 'attachments' in last_msg and last_msg['attachments']:
                 for att in last_msg['attachments']:
                     if att.get('content_type', '').startswith('image/'):
-                        img = load_image(att['path'])
+                        img = _load_local_image(att['path'])
                         if img:
                             current_parts.append(img)
             
