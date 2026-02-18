@@ -5,6 +5,9 @@ import asyncio
 import httpx
 import PIL.Image
 import google.generativeai as genai
+import asyncio
+import os
+import PIL.Image
 from typing import List, Dict, Any, Optional
 from config import OPENROUTER_API_KEY, OPENROUTER_API_URL, GOOGLE_API_KEY, MODEL_TIMEOUT
 
@@ -27,7 +30,7 @@ def _load_local_image(path: str) -> Optional[PIL.Image.Image]:
 
 async def query_model_direct_google(
     model_name: str,
-    messages: List[Dict[str, str]],
+    messages: List[Dict[str, Any]],
     timeout: float = MODEL_TIMEOUT
 ) -> Optional[Dict[str, Any]]:
     """Query Google Gemini API directly using the SDK with retries."""
@@ -46,18 +49,18 @@ async def query_model_direct_google(
     
     for attempt in range(max_retries):
         try:
-            # simple import check
-            import google.generativeai as genai
-            
             model = genai.GenerativeModel(
                 model_name,
-                system_instruction=next((m['content'] for m in messages if m.get('role') == 'system'), None)
+                system_instruction=system_instruction
             )
             
-            # Filter out system messages for the conversation
+            # Filter out system messages for the conversation history
             conv_messages = [m for m in messages if m.get('role') != 'system']
             
             # Convert messages to Gemini history format and handle images
+            gemini_history = []
+
+            # Convert messages to Gemini history format
             gemini_history = []
 
             # Process history (excluding last message)
@@ -75,7 +78,7 @@ async def query_model_direct_google(
                                 
                 gemini_history.append({'role': role, 'parts': parts})
             
-            # Process current message
+            # Process current message (last one)
             last_msg = conv_messages[-1]
             current_parts = [last_msg['content']]
             if 'attachments' in last_msg and last_msg['attachments']:
@@ -111,7 +114,7 @@ async def query_model_direct_google(
 
 async def query_model(
     model: str,
-    messages: List[Dict[str, str]],
+    messages: List[Dict[str, Any]],
     timeout: float = MODEL_TIMEOUT
 ) -> Optional[Dict[str, Any]]:
     """
@@ -135,10 +138,23 @@ async def query_model(
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
+        "HTTP-Referer": "https://llm-council.local", # Optional, for including your app on openrouter.ai rankings.
+        "X-Title": "LLM Council", # Optional. Shows in rankings on openrouter.ai.
     }
+
+    # Clean messages for OpenRouter (remove attachments/images if not supported directly via URL or base64)
+    # OpenRouter generally supports image URLs in content blocks for vision models.
+    # For simplicity, we'll just extract text unless we implement full image handling for OpenRouter.
+    clean_messages = []
+    for m in messages:
+        content = m.get('content', '')
+        # If attachments exist but we aren't handling them for OpenRouter yet, warn or ignore.
+        # Ideally, we'd upload them somewhere or convert to base64 data URLs.
+        clean_messages.append({"role": m['role'], "content": content})
+
     payload = {
         "model": model,
-        "messages": messages,
+        "messages": clean_messages,
     }
 
     try:
@@ -150,22 +166,32 @@ async def query_model(
             )
             response.raise_for_status()
             data = response.json()
-            message = data['choices'][0]['message']
-            return {
-                'content': message.get('content'),
-                'reasoning_details': message.get('reasoning_details')
-            }
+            if 'choices' in data and len(data['choices']) > 0:
+                message = data['choices'][0]['message']
+                return {
+                    'content': message.get('content'),
+                    'reasoning_details': message.get('reasoning_details') # Some models return reasoning
+                }
+            else:
+                print(f"⚠️ Unexpected response structure from OpenRouter for {model}: {data}")
+                return None
+
     except Exception as e:
         print(f"⚠️ Error querying {model}: {e}")
         
         # Check for defined fallback
+        # Import inside function to avoid potential circular import issues if config imports this module (though currently it doesn't)
         from config import MODEL_FALLBACKS
         if model in MODEL_FALLBACKS:
             backup_model = MODEL_FALLBACKS[model]
+            # Avoid infinite recursion if backup is same as primary
+            if backup_model == model:
+                print(f"⚠️ Backup model is same as primary ({model}). Skipping fallback.")
+                return None
+
             print(f"🔄 Switching to BACKUP model: {backup_model}")
             try:
                 # Recursive call with the backup model
-                # We do NOT pass the fallback again to avoid infinite loops if backup is same as primary (though config prevents this)
                 return await query_model(backup_model, messages, timeout=timeout)
             except Exception as backup_e:
                 print(f"❌ Backup {backup_model} also failed: {backup_e}")
@@ -174,8 +200,8 @@ async def query_model(
 
 async def query_models_parallel(
     models: List[str],
-    messages: List[Dict[str, str]],
-    model_messages: Dict[str, List[Dict[str, str]]] = None
+    messages: List[Dict[str, Any]],
+    model_messages: Dict[str, List[Dict[str, Any]]] = None
 ) -> Dict[str, Optional[Dict[str, Any]]]:
     """Query multiple models in parallel with staggered starts to avoid rate limits.
     
@@ -184,7 +210,6 @@ async def query_models_parallel(
         messages: Default messages for all models (can be None if model_messages provided)
         model_messages: Optional dict mapping model -> custom messages (for lens personas)
     """
-    import asyncio
     import random
     
     async def delayed_query(model, msgs, delay):
@@ -193,7 +218,6 @@ async def query_models_parallel(
         return await query_model(model, msgs)
 
     # Stagger requests slightly to avoid hitting strict "burst" limits, but keep it fast.
-    # Reduced from 1.5s to 0.2s to improve user-perceived latency.
     tasks = []
     for i, model in enumerate(models):
         # Use per-model messages if available, otherwise default
