@@ -48,6 +48,9 @@ class TestRefactoredImageHelper(unittest.TestCase):
         ]
 
         for input_path, expected_path in cases:
+            # Update expectation to absolute path due to security fix
+            expected_path = os.path.abspath(expected_path)
+
             with self.subTest(path=input_path):
                 # Reset mocks
                 mock_exists.reset_mock()
@@ -60,6 +63,26 @@ class TestRefactoredImageHelper(unittest.TestCase):
                 mock_exists.assert_called_with(expected_path)
                 mock_open.assert_called_with(expected_path)
                 self.assertEqual(result, mock_image_obj)
+
+    @patch('backend.openrouter.os.path.exists')
+    def test_path_traversal_prevention(self, mock_exists):
+        """Test that path traversal attempts are blocked."""
+        # Even if file exists, it should be blocked
+        mock_exists.return_value = True
+
+        # Attack vectors
+        # Note: These paths attempt to go outside the 'data' directory
+        # The exact resolution depends on where the test runs, but '..' should trigger checks
+        vectors = [
+            'uploads/../../secret.txt',
+            'data/../secret.txt',
+            'data/uploads/../../secret.txt'
+        ]
+
+        for path in vectors:
+            with self.subTest(vector=path):
+                result = _load_local_image(path)
+                self.assertIsNone(result, f"Failed to block traversal for {path}")
 
     @patch('backend.openrouter.os.path.exists')
     def test_image_not_found(self, mock_exists):
