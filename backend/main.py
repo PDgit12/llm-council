@@ -200,7 +200,8 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
 async def list_conversations(request: Request):
     """List all conversations (metadata only)."""
     check_rate_limit(request, "global", RATE_LIMIT_GLOBAL)
-    return storage.list_conversations()
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, storage.list_conversations)
 
 
 @app.post("/api/conversations", response_model=Conversation)
