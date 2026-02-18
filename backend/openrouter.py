@@ -1,6 +1,9 @@
 """OpenRouter API client for making LLM requests."""
 
+import os
+import asyncio
 import httpx
+import PIL.Image
 import google.generativeai as genai
 import asyncio
 import os
@@ -11,6 +14,19 @@ from config import OPENROUTER_API_KEY, OPENROUTER_API_URL, GOOGLE_API_KEY, MODEL
 # Configure Google SDK if key is present
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
+
+def _load_local_image(path: str) -> Optional[PIL.Image.Image]:
+    """Helper to load image if path exists."""
+    # Remove leading /uploads/ or / if present to get relative path from root
+    clean_path = path.lstrip('/')
+    if clean_path.startswith('uploads/'):
+        clean_path = os.path.join('data', clean_path)
+    elif not clean_path.startswith('data/'):
+        clean_path = os.path.join('data/uploads', os.path.basename(path))
+
+    if os.path.exists(clean_path):
+        return PIL.Image.open(clean_path)
+    return None
 
 async def query_model_direct_google(
     model_name: str,
@@ -41,43 +57,26 @@ async def query_model_direct_google(
             # Filter out system messages for the conversation history
             conv_messages = [m for m in messages if m.get('role') != 'system']
             
-            # Helper to load image if path exists
-            def load_image(path):
-                if not path:
-                    return None
-                # Remove leading /uploads/ or / if present to get relative path from root
-                clean_path = path.lstrip('/')
-                if clean_path.startswith('uploads/'):
-                    clean_path = os.path.join('data', clean_path)
-                elif not clean_path.startswith('data/'):
-                    clean_path = os.path.join('data/uploads', os.path.basename(path))
-                
-                if os.path.exists(clean_path):
-                    try:
-                        return PIL.Image.open(clean_path)
-                    except Exception as e:
-                        print(f"Error loading image {clean_path}: {e}")
-                        return None
-                return None
+            # Convert messages to Gemini history format and handle images
+            gemini_history = []
 
             # Convert messages to Gemini history format
             gemini_history = []
 
             # Process history (excluding last message)
-            if len(conv_messages) > 1:
-                for msg in conv_messages[:-1]:
-                    role = 'user' if msg['role'] == 'user' else 'model'
-                    parts = [msg['content']]
-
-                    # Check for attachments in history messages
-                    if 'attachments' in msg and msg['attachments']:
-                        for att in msg['attachments']:
-                            if att.get('content_type', '').startswith('image/'):
-                                img = load_image(att.get('path'))
-                                if img:
-                                    parts.append(img)
-
-                    gemini_history.append({'role': role, 'parts': parts})
+            for msg in conv_messages[:-1]:
+                role = 'user' if msg['role'] == 'user' else 'model'
+                parts = [msg['content']]
+                
+                # Check for attachments in history messages
+                if 'attachments' in msg and msg['attachments']:
+                    for att in msg['attachments']:
+                        if att.get('content_type', '').startswith('image/'):
+                            img = _load_local_image(att['path'])
+                            if img:
+                                parts.append(img)
+                                
+                gemini_history.append({'role': role, 'parts': parts})
             
             # Process current message (last one)
             last_msg = conv_messages[-1]
@@ -85,7 +84,7 @@ async def query_model_direct_google(
             if 'attachments' in last_msg and last_msg['attachments']:
                 for att in last_msg['attachments']:
                     if att.get('content_type', '').startswith('image/'):
-                        img = load_image(att.get('path'))
+                        img = _load_local_image(att['path'])
                         if img:
                             current_parts.append(img)
             
