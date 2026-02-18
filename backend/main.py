@@ -21,7 +21,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 os.makedirs("data/uploads", exist_ok=True)
 
 from council import (
-    generate_conversation_title, run_analogy_pipeline, select_domains
+    generate_conversation_title, run_analogy_pipeline
 )
 import storage
 from config import (
