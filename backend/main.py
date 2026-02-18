@@ -20,8 +20,9 @@ import storage
 from config import (
     RATE_LIMIT_GLOBAL, RATE_LIMIT_MESSAGE, RATE_LIMIT_UPLOAD,
     MAX_MESSAGE_LENGTH, MAX_UPLOAD_SIZE, ALLOWED_UPLOAD_TYPES,
-    MAX_CONVERSATIONS
+    MAX_CONVERSATIONS, FIREBASE_PROJECT_ID
 )
+import re
 
 app = FastAPI(title="Parallels API", description="Cross-Domain Analogy Engine")
 
@@ -29,17 +30,32 @@ app = FastAPI(title="Parallels API", description="Cross-Domain Analogy Engine")
 os.makedirs("data/uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 
-# CORS for frontend
-# CORS for frontend
+# ── CORS CONFIGURATION ──
+# We allow localhost for development and specific project subdomains for production/previews.
+allowed_origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
+
+# Construct a restrictive regex for preview URLs.
+# Avoid broad wildcards like '.*' on shared domains (web.app, onrender.com)
+# to prevent cross-origin attacks from other users' sites.
+cors_regex_parts = []
+if FIREBASE_PROJECT_ID:
+    safe_id = re.escape(FIREBASE_PROJECT_ID)
+    cors_regex_parts.append(fr"https://{safe_id}(--.*)?\.web\.app")
+    cors_regex_parts.append(fr"https://{safe_id}(--.*)?\.firebaseapp\.com")
+
+# Allow specific Render project subdomains
+cors_regex_parts.append(r"https://parallels-[a-z0-9-]+\.onrender\.com")
+
+# Combine parts into a single regex string
+allow_origin_regex = "|".join(cors_regex_parts) if cors_regex_parts else None
+
 app.add_middleware(
     CORSMiddleware,
-    # Allow specific origins
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ],
-    # ALSO allow any Netlify/Vercel/Firebase preview URL using regex
-    allow_origin_regex=r"https://.*\.web\.app|https://.*\.firebaseapp\.com|https://.*\.onrender\.com",
+    allow_origins=allowed_origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
