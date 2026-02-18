@@ -130,11 +130,9 @@ def add_user_message(
 
 def add_assistant_message(
     conversation_id: str,
-    stage1: List[Dict[str, Any]],
-    stage2: List[Dict[str, Any]],
-    stage3: Dict[str, Any]
+    result: Dict[str, Any]
 ):
-    """Add an assistant message with all 3 stages."""
+    """Add an assistant message with the full pipeline result."""
     conversation = get_conversation(conversation_id)
     if conversation is None:
         raise ValueError(f"Conversation {conversation_id} not found")
@@ -142,13 +140,17 @@ def add_assistant_message(
     if "messages" not in conversation:
         conversation["messages"] = []
 
-    conversation["messages"].append({
-        "role": "assistant",
-        "stage1": stage1,
-        "stage2": stage2,
-        "stage3": stage3
-    })
+    message = {
+        "role": "assistant"
+    }
+    # Merge all result fields (stage1, stage2, final_answer, etc.)
+    message.update(result)
 
+    # Ensure standard 'content' field is present for compatibility
+    if "content" not in message and "final_answer" in message:
+        message["content"] = message["final_answer"]
+
+    conversation["messages"].append(message)
     save_conversation(conversation)
 
 

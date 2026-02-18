@@ -283,25 +283,9 @@ async def send_message_stream(request: Request, conversation_id: str, body: Send
                 storage.update_conversation_title(conversation_id, title)
                 yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
 
-            # Save to storage (Adapting to new format)
-            # The 'result' contains 'stages' and 'final_answer'. 
-            # We map this to the storage schema.
-            # stage2_results -> result['stages']['stage2'] (Grounding)
-            # stage3_results -> result['stages']['stage3'] (Technical)
-            # final_answer -> result['final_answer']
-            
-            # Mocking the old structure for storage compatibility if needed, 
-            # OR we should update storage.add_assistant_message to handle the new structure.
-            # For now, let's pass empty lists for the old distinct stages and put everything in the content 
-            # or rely on a new storage method. 
-            # Let's assume storage can handle generic blobs or we just save the final answer.
-            
-            storage.add_assistant_message(
-                conversation_id, 
-                [], # Old explorations
-                [], # Old evaluations
-                result.get("final_answer", "")
-            )
+            # Save to storage
+            # The 'result' contains all stages and 'final_answer'.
+            storage.add_assistant_message(conversation_id, result)
             
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
