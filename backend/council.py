@@ -10,8 +10,7 @@ from openrouter import query_models_parallel, query_model
 from config import (
     STAGE1_MODELS, STAGE2_MODELS, STAGE3_MODELS, 
     STAGE4_MODELS, STAGE5_MODELS, STAGE6_MODEL,
-    TITLE_MODEL, DOMAIN_POOL,
-    MODEL_NICHE_SPECIALIST, MODEL_TECHNICAL_SPECIALIST
+    TITLE_MODEL, DOMAIN_POOL
 )
 
 # Security & Safety
