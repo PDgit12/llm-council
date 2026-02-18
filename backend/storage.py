@@ -54,6 +54,7 @@ def create_conversation(conversation_id: str) -> Dict[str, Any]:
         "created_at": datetime.utcnow().isoformat(),
         "title": "New Task",
         "messages": [],
+        "message_count": 0,
         "test_cases": []
     }
 
@@ -86,16 +87,36 @@ def list_conversations() -> List[Dict[str, Any]]:
         return []
 
     conversations = []
-    # Fetch all docs, but ideally we'd use pagination if there are many
-    docs = db.collection("conversations").stream()
+    # Fetch metadata only to optimize bandwidth
+    # Ideally we'd also use pagination if there are many
+    docs = db.collection("conversations").select(
+        ["id", "created_at", "title", "message_count"]
+    ).stream()
     
     for doc in docs:
         data = doc.to_dict()
+        message_count = data.get("message_count")
+
+        # Fallback for legacy documents without 'message_count'
+        if message_count is None:
+            # We must fetch the full doc (or at least messages) to count them.
+            # Using reference.get() fetches the full document.
+            try:
+                full_doc = doc.reference.get()
+                if full_doc.exists:
+                    full_data = full_doc.to_dict()
+                    message_count = len(full_data.get("messages", []))
+                else:
+                    message_count = 0
+            except Exception as e:
+                print(f"Error fetching legacy doc {doc.id}: {e}")
+                message_count = 0
+
         conversations.append({
             "id": data["id"],
             "created_at": data["created_at"],
             "title": data.get("title", "New Task"),
-            "message_count": len(data.get("messages", []))
+            "message_count": message_count
         })
 
     # Sort by creation time, newest first
@@ -125,6 +146,7 @@ def add_user_message(
         conversation["messages"] = []
         
     conversation["messages"].append(message)
+    conversation["message_count"] = len(conversation["messages"])
     save_conversation(conversation)
 
 
@@ -149,6 +171,7 @@ def add_assistant_message(
         "stage3": stage3
     })
 
+    conversation["message_count"] = len(conversation["messages"])
     save_conversation(conversation)
 
 
