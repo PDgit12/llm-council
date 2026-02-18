@@ -33,9 +33,6 @@ async def query_model_direct_google(
     
     for attempt in range(max_retries):
         try:
-            # simple import check
-            import google.generativeai as genai
-            
             model = genai.GenerativeModel(
                 model_name,
                 system_instruction=next((m['content'] for m in messages if m.get('role') == 'system'), None)
