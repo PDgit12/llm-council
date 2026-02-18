@@ -12,9 +12,16 @@ import uuid
 import json
 import time
 import os
+import sys
+
+# Ensure backend directory is in python path for imports to work
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Ensure data directory exists before imports that might rely on it
+os.makedirs("data/uploads", exist_ok=True)
 
 from council import (
-    generate_conversation_title, run_analogy_pipeline, select_domains
+    generate_conversation_title, run_analogy_pipeline
 )
 import storage
 from config import (
@@ -26,10 +33,8 @@ from config import (
 app = FastAPI(title="Parallels API", description="Cross-Domain Analogy Engine")
 
 # Serve uploaded files statically
-os.makedirs("data/uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 
-# CORS for frontend
 # CORS for frontend
 app.add_middleware(
     CORSMiddleware,
@@ -144,6 +149,9 @@ class Conversation(BaseModel):
 async def global_exception_handler(request: Request, exc: Exception):
     """Catch unhandled exceptions — never leak internals to the client."""
     print(f"[ERROR] Unhandled exception: {exc}")
+    # Print traceback for debugging
+    import traceback
+    traceback.print_exc()
     from starlette.responses import JSONResponse
     return JSONResponse(
         status_code=500,
@@ -210,6 +218,7 @@ async def create_conversation(request: Request, body: CreateConversationRequest)
 
     existing = storage.list_conversations()
     if len(existing) >= MAX_CONVERSATIONS:
+        # Check if we can delete oldest (optional feature, currently just blocking)
         raise HTTPException(
             status_code=429,
             detail=f"Maximum of {MAX_CONVERSATIONS} explorations reached. Please delete old ones."
@@ -251,11 +260,11 @@ async def send_message_stream(request: Request, conversation_id: str, body: Send
     if conversation is None:
         raise HTTPException(status_code=404, detail="Exploration not found")
 
-    is_first_message = len(conversation["messages"]) == 0
+    is_first_message = len(conversation.get("messages", [])) == 0
 
     async def event_generator():
         try:
-            history = conversation["messages"]
+            history = conversation.get("messages", [])
             storage.add_user_message(conversation_id, body.content, attachments=body.attachments)
 
             title_task = None
@@ -266,7 +275,6 @@ async def send_message_stream(request: Request, conversation_id: str, body: Send
             yield f"data: {json.dumps({'type': 'council_start', 'message': 'The Council is convening...'})}\n\n"
             
             # Execute the full Council Flow
-            # Note: This awaits the entire flow. Future improvement: stream internal orchestrator events.
             result = await run_analogy_pipeline(
                 body.content, 
                 history, 
@@ -279,34 +287,29 @@ async def send_message_stream(request: Request, conversation_id: str, body: Send
 
             # Title detection (if needed)
             if title_task:
-                title = await title_task
-                storage.update_conversation_title(conversation_id, title)
-                yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
+                try:
+                    title = await title_task
+                    storage.update_conversation_title(conversation_id, title)
+                    yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
+                except Exception as e:
+                    print(f"Error generating title: {e}")
 
-            # Save to storage (Adapting to new format)
-            # The 'result' contains 'stages' and 'final_answer'. 
-            # We map this to the storage schema.
-            # stage2_results -> result['stages']['stage2'] (Grounding)
-            # stage3_results -> result['stages']['stage3'] (Technical)
-            # final_answer -> result['final_answer']
-            
-            # Mocking the old structure for storage compatibility if needed, 
-            # OR we should update storage.add_assistant_message to handle the new structure.
-            # For now, let's pass empty lists for the old distinct stages and put everything in the content 
-            # or rely on a new storage method. 
-            # Let's assume storage can handle generic blobs or we just save the final answer.
-            
+            # Save to storage
+            # We explicitly map the result keys to storage arguments for clarity
             storage.add_assistant_message(
-                conversation_id, 
-                [], # Old explorations
-                [], # Old evaluations
-                result.get("final_answer", "")
+                conversation_id=conversation_id,
+                stage1=result.get("stage1"),
+                stage2=result.get("stage2"),
+                stage3=result.get("stage3"),
+                final_answer=result.get("final_answer", "")
             )
             
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
         except Exception as e:
             print(f"[ERROR] Stream failed for {conversation_id}: {e}")
+            import traceback
+            traceback.print_exc()
             yield f"data: {json.dumps({'type': 'error', 'message': 'An error occurred while processing your request. Please try again.'})}\n\n"
 
     return StreamingResponse(
