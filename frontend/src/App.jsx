@@ -41,6 +41,168 @@ function App() {
     }
   }, [currentConversationId]);
 
+  const handleSendMessage = async (content, attachments = []) => {
+    if (!currentConversationId) return;
+
+    // Helper for immutable state updates on the last message
+    const updateLastMessage = (updater) => {
+      setCurrentConversation((prev) => {
+        const messages = [...(prev.messages || [])];
+        if (messages.length === 0) return prev;
+
+        const lastIndex = messages.length - 1;
+        // Create a shallow copy of the last message
+        const lastMsg = { ...messages[lastIndex] };
+
+        // Create a shallow copy of the loading object if it exists
+        if (lastMsg.loading) {
+          lastMsg.loading = { ...lastMsg.loading };
+        }
+
+        // Apply updates (mutating the copies is fine)
+        updater(lastMsg);
+
+        messages[lastIndex] = lastMsg;
+        return { ...prev, messages };
+      });
+    };
+
+    setIsLoading(true);
+    try {
+      const userMessage = { role: 'user', content, attachments };
+      setCurrentConversation((prev) => ({
+        ...prev,
+        messages: [...(prev?.messages || []), userMessage],
+      }));
+
+      const assistantMessage = {
+        role: 'assistant',
+        stage1: null,
+        stage2: null,
+        stage3: null,
+        stage4: null,
+        domains: [],
+        loading: {
+          stage1: false,
+          stage2: false,
+          stage3: false,
+          stage4: false,
+        },
+      };
+
+      setCurrentConversation((prev) => ({
+        ...prev,
+        messages: [...(prev?.messages || []), assistantMessage],
+      }));
+
+      await api.sendMessageStream(currentConversationId, { content, attachments }, (eventType, event) => {
+        switch (eventType) {
+          case 'stage1_start':
+            updateLastMessage((msg) => {
+              msg.loading.stage1 = true;
+              if (event.domains) msg.domains = event.domains;
+            });
+            break;
+
+          case 'stage1_complete':
+            updateLastMessage((msg) => {
+              msg.stage1 = event.data;
+              msg.loading.stage1 = false;
+            });
+            break;
+
+          case 'stage2_start':
+            updateLastMessage((msg) => {
+              msg.loading.stage2 = true;
+              if (event.domains) msg.domains = event.domains;
+            });
+            break;
+
+          case 'stage2_complete':
+            updateLastMessage((msg) => {
+              msg.stage2 = event.data;
+              msg.loading.stage2 = false;
+            });
+            break;
+
+          case 'stage3_start':
+            updateLastMessage((msg) => {
+              msg.loading.stage3 = true;
+            });
+            break;
+
+          case 'stage3_complete':
+            updateLastMessage((msg) => {
+              msg.stage3 = event.data;
+              msg.loading.stage3 = false;
+            });
+            break;
+
+          case 'stage4_start':
+            updateLastMessage((msg) => {
+              msg.loading.stage4 = true;
+            });
+            break;
+
+          case 'stage4_complete':
+            updateLastMessage((msg) => {
+              msg.stage4 = event.data;
+              msg.loading.stage4 = false;
+            });
+            break;
+
+          case 'council_start':
+            updateLastMessage((msg) => {
+              msg.loading.stage1 = true; // Show *some* loading indicator
+            });
+            break;
+
+          case 'council_complete':
+            updateLastMessage((msg) => {
+              msg.final_answer = event.data.final_answer;
+              msg.reasoning_factor = event.data.reasoning_factor;
+
+              // Clear loading states
+              msg.loading = {
+                stage1: false,
+                stage2: false,
+                stage3: false,
+                stage4: false
+              };
+
+              // Store full result if needed for debugging or advanced view
+              msg.council_result = event.data;
+            });
+            break;
+
+          case 'title_complete':
+            loadConversations();
+            break;
+
+          case 'complete':
+            loadConversations();
+            setIsLoading(false);
+            break;
+
+          case 'error':
+            console.error('Stream error:', event.message);
+            setIsLoading(false);
+            break;
+
+          default:
+            console.log('Unknown event type:', eventType);
+        }
+      });
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      setCurrentConversation((prev) => ({
+        ...prev,
+        messages: prev.messages.slice(0, -2),
+      }));
+      setIsLoading(false);
+    }
+  };
+
   // When conversation loads and there's a pending query, auto-send it
   useEffect(() => {
     if (currentConversation && pendingQueryRef.current && currentConversation.messages?.length === 0) {
@@ -48,6 +210,7 @@ function App() {
       pendingQueryRef.current = null;
       handleSendMessage(query);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentConversation]);
 
   const handleNewConversation = async () => {
@@ -93,176 +256,6 @@ function App() {
     setCurrentConversationId(null);
     setCurrentConversation(null);
     setShowLanding(true);
-  };
-
-  const handleSendMessage = async (content, attachments = []) => {
-    if (!currentConversationId) return;
-
-    setIsLoading(true);
-    try {
-      const userMessage = { role: 'user', content, attachments };
-      setCurrentConversation((prev) => ({
-        ...prev,
-        messages: [...(prev?.messages || []), userMessage],
-      }));
-
-      const assistantMessage = {
-        role: 'assistant',
-        stage1: null,
-        stage2: null,
-        stage3: null,
-        stage4: null,
-        domains: [],
-        loading: {
-          stage1: false,
-          stage2: false,
-          stage3: false,
-          stage4: false,
-        },
-      };
-
-      setCurrentConversation((prev) => ({
-        ...prev,
-        messages: [...(prev?.messages || []), assistantMessage],
-      }));
-
-      await api.sendMessageStream(currentConversationId, { content, attachments }, (eventType, event) => {
-        switch (eventType) {
-          case 'stage1_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.stage1 = true;
-              if (event.domains) lastMsg.domains = event.domains;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'stage1_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage1 = event.data;
-              lastMsg.loading.stage1 = false;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'stage2_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.stage2 = true;
-              if (event.domains) lastMsg.domains = event.domains;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'stage2_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage2 = event.data;
-              lastMsg.loading.stage2 = false;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'stage3_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.stage3 = true;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'stage3_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage3 = event.data;
-              lastMsg.loading.stage3 = false;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'stage4_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.stage4 = true;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'stage4_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage4 = event.data;
-              lastMsg.loading.stage4 = false;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'council_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.stage1 = true; // Show *some* loading indicator
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'council_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.final_answer = event.data.final_answer;
-              lastMsg.reasoning_factor = event.data.reasoning_factor;
-
-              // Clear loading states
-              lastMsg.loading = {
-                stage1: false,
-                stage2: false,
-                stage3: false,
-                stage4: false
-              };
-
-              // Store full result if needed for debugging or advanced view
-              lastMsg.council_result = event.data;
-
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'title_complete':
-            loadConversations();
-            break;
-
-          case 'complete':
-            loadConversations();
-            setIsLoading(false);
-            break;
-
-          case 'error':
-            console.error('Stream error:', event.message);
-            setIsLoading(false);
-            break;
-
-          default:
-            console.log('Unknown event type:', eventType);
-        }
-      });
-    } catch (error) {
-      console.error('Failed to send message:', error);
-      setCurrentConversation((prev) => ({
-        ...prev,
-        messages: prev.messages.slice(0, -2),
-      }));
-      setIsLoading(false);
-    }
   };
 
   // Full-screen landing page (no sidebar)

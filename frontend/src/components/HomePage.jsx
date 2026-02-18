@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import './HomePage.css';
 
 function HomePage({ conversations, onNewConversation, onSelectConversation, onExampleClick }) {
