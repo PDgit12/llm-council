@@ -27,8 +27,9 @@ import storage
 from config import (
     RATE_LIMIT_GLOBAL, RATE_LIMIT_MESSAGE, RATE_LIMIT_UPLOAD,
     MAX_MESSAGE_LENGTH, MAX_UPLOAD_SIZE, ALLOWED_UPLOAD_TYPES,
-    MAX_CONVERSATIONS
+    MAX_CONVERSATIONS, FIREBASE_PROJECT_ID
 )
+import re
 
 app = FastAPI(title="Parallels API", description="Cross-Domain Analogy Engine")
 
@@ -38,13 +39,8 @@ app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 # CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    # Allow specific origins
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ],
-    # ALSO allow any Netlify/Vercel/Firebase preview URL using regex
-    allow_origin_regex=r"https://.*\.web\.app|https://.*\.firebaseapp\.com|https://.*\.onrender\.com",
+    allow_origins=allowed_origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
