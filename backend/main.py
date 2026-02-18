@@ -167,6 +167,11 @@ async def root():
 
 # ── File Upload (rate-limited, size-limited, type-restricted) ──
 
+def _save_upload_file(filepath: str, content: bytes):
+    """Helper to save file content synchronously in a thread pool."""
+    with open(filepath, 'wb') as f:
+        f.write(content)
+
 @app.post("/api/upload")
 async def upload_file(request: Request, file: UploadFile = File(...)):
     """Upload an image file (max 5 MB, images only)."""
@@ -187,8 +192,9 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
 
     filename = f"{uuid.uuid4()}{os.path.splitext(file.filename or '.png')[1]}"
     filepath = f"data/uploads/{filename}"
-    with open(filepath, 'wb') as f:
-        f.write(content)
+
+    # Run synchronous file I/O in a thread pool to avoid blocking the event loop
+    await asyncio.to_thread(_save_upload_file, filepath, content)
 
     return {
         "filename": filename,
