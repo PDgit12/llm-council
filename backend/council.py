@@ -144,6 +144,11 @@ class CouncilOrchestrator:
 
     def _blocked_response(self, reason: str) -> Dict[str, Any]:
         return {
+            "stage1": {},
+            "stage2": {},
+            "stage3": {},
+            "stage4": {},
+            "stage5": {},
             "final_answer": f"I cannot process this request. {reason}",
             "error": "Blocked by Safety Policy"
         }
