@@ -27,6 +27,12 @@ def migrate():
                 with open(path, 'r') as f:
                     data = json.load(f)
                 
+                # Add message_count for optimized listing
+                if "messages" in data:
+                    data["message_count"] = len(data["messages"])
+                else:
+                    data["message_count"] = 0
+
                 # Use storage methods to save to Firestore
                 print(f"Migrating {data['id']} ({data.get('title', 'Untitled')})...")
                 
