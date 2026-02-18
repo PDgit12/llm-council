@@ -67,6 +67,16 @@ function ChatInterface({ conversation, onSendMessage, isLoading }) {
 
   const isEmpty = conversation.messages?.length === 0;
 
+  // Helper to determine the loading text based on active stage
+  const getLoadingText = (loadingState) => {
+    if (!loadingState) return "Thinking...";
+    if (loadingState.stage1) return "Deconstructing query...";
+    if (loadingState.stage2) return "Exploring cross-domain analogies...";
+    if (loadingState.stage3) return "Mapping structural similarities...";
+    if (loadingState.stage4) return "Synthesizing insights...";
+    return "Thinking...";
+  };
+
   return (
     <div className="chat-interface">
       <div className="messages-area">
@@ -74,8 +84,8 @@ function ChatInterface({ conversation, onSendMessage, isLoading }) {
           <div className="empty-state">
             <div className="empty-content">
               <div className="empty-icon">⌘</div>
-              <h2 className="empty-title">Good Afternoon</h2>
-              <p className="empty-subtitle">What's on your mind?</p>
+              <h2 className="empty-title">Parallels</h2>
+              <p className="empty-subtitle">Unlock breakthrough insights with cross-domain thinking.</p>
             </div>
 
             <div className="example-cards">
@@ -125,7 +135,7 @@ function ChatInterface({ conversation, onSendMessage, isLoading }) {
                   /* Robust loading text if no final answer yet */
                   <div className="processing-indicator">
                     <span className="stage-spinner" />
-                    {msg.loading?.stage1 ? "Browsing..." : "Thinking..."}
+                    <span className="processing-text">{getLoadingText(msg.loading)}</span>
                   </div>
                 )}
               </div>

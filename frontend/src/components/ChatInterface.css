@@ -1,5 +1,5 @@
 /* ============================================
-   PARALLELS — Chat Interface (Clean Light)
+   PARALLELS — Chat Interface (Obsidian)
    ============================================ */
 
 .chat-interface {
@@ -9,6 +9,7 @@
   height: 100vh;
   background-color: var(--color-bg-primary);
   position: relative;
+  overflow: hidden;
 }
 
 .chat-loading {
@@ -17,110 +18,116 @@
   align-items: center;
   justify-content: center;
   color: var(--color-text-secondary);
+  font-weight: 500;
+  font-size: 1.1rem;
 }
 
 /* ── Messages Area ── */
 .messages-area {
   flex: 1;
   overflow-y: auto;
-  padding: 40px 20px 120px 20px;
-  /* Bottom padding for fixed input */
+  padding: 60px 24px 140px 24px;
+  /* Extra bottom padding for floating input */
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 32px;
   scroll-behavior: smooth;
   max-width: 900px;
   margin: 0 auto;
   width: 100%;
 }
 
-/* ── Empty State (Welcome Screen) ── */
+/* ── Empty State ── */
 .empty-state {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 32px;
+  gap: 40px;
   min-height: 60vh;
 }
 
 .empty-content {
   text-align: center;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
+  width: 80px;
+  height: 80px;
+  font-size: 32px;
   background: var(--gradient-brand);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  width: 64px;
-  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background-color: var(--color-bg-tertiary);
-  margin: 0 auto 16px auto;
+  margin: 0 auto 24px auto;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-border);
 }
 
 .empty-title {
-  font-size: 2rem;
-  font-weight: 600;
+  font-size: 2.2rem;
+  font-weight: 800;
   color: var(--color-text-primary);
-  margin-bottom: 8px;
-  letter-spacing: -0.02em;
+  margin-bottom: 12px;
+  letter-spacing: -0.03em;
 }
 
 .empty-subtitle {
-  font-size: 1.25rem;
-  color: var(--color-brand);
-  font-weight: 500;
+  font-size: 1.1rem;
+  color: var(--color-text-secondary);
+  font-weight: 400;
+  max-width: 480px;
+  margin: 0 auto;
+  line-height: 1.6;
 }
 
 /* Example Cards */
 .example-cards {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: 16px;
   width: 100%;
-  max-width: 800px;
-  margin-top: 20px;
+  max-width: 720px;
+  margin-top: 10px;
 }
 
 .example-card {
   background-color: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
-  padding: 16px 20px;
-  border-radius: var(--radius-md);
+  padding: 20px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   text-align: left;
-  transition: all 0.2s ease;
+  transition: var(--transition-base);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .example-card:hover {
   background-color: var(--color-bg-tertiary);
-  border-color: var(--color-border-hover);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-sm);
+  border-color: var(--color-brand);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
 }
 
 .card-title {
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 0.95rem;
+  font-weight: 600;
   color: var(--color-text-primary);
+  line-height: 1.4;
 }
 
 .card-icon {
-  font-size: 1.2rem;
+  font-size: 1.4rem;
   margin-bottom: 4px;
-  color: var(--color-text-secondary);
 }
 
 
@@ -129,19 +136,12 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  animation: fadeIn 0.3s ease;
+  animation: fadeIn 0.4s ease-out;
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .message.user {
@@ -150,124 +150,158 @@
 
 .user-bubble {
   background-color: var(--color-bg-tertiary);
-  /* Light gray for user */
-  padding: 12px 18px;
+  padding: 16px 20px;
   border-radius: 20px 20px 4px 20px;
   color: var(--color-text-primary);
-  max-width: 80%;
-  font-size: 1rem;
-  line-height: 1.5;
-}
-
-.message-attachments {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-  justify-content: flex-end;
-}
-
-.attachment-chip {
-  background: white;
-  padding: 4px 10px;
-  border-radius: 8px;
-  font-size: 0.85em;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
+  max-width: 85%;
+  font-size: 1.05rem;
+  line-height: 1.6;
   box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border);
 }
 
-/* Assistant Response */
+/* Assistant Message - Polished */
 .assistant-response {
   width: 100%;
   padding-right: 24px;
 }
 
-/* Hide raw metrics as requested */
-.council-header,
-.reasoning-score,
-.stage-section {
-  display: none !important;
-}
-
-/* Only show final answer cleanly */
-.council-final-answer {
-  background: transparent;
-  border: none;
-  padding: 0;
-  margin-top: 0;
-  box-shadow: none;
-}
-
+/* Markdown Styles */
 .markdown-content {
   color: var(--color-text-primary);
-  font-size: 1rem;
-  line-height: 1.6;
+  font-size: 1.05rem;
+  line-height: 1.7;
 }
 
-/* Loading State */
-.processing-indicator {
-  color: var(--color-text-secondary);
+.markdown-content p {
+  margin-bottom: 1.2em;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-top: 1.5em;
+  margin-bottom: 0.8em;
+  letter-spacing: -0.02em;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin-bottom: 1.2em;
+  padding-left: 1.5em;
+}
+
+.markdown-content li {
+  margin-bottom: 0.5em;
+}
+
+.markdown-content code {
+  background-color: var(--color-bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--color-brand-dark);
+}
+
+.markdown-content pre {
+  background-color: #1e293b; /* Dark code block always looks pro */
+  padding: 16px;
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  margin-bottom: 1.5em;
+}
+
+.markdown-content pre code {
+  background-color: transparent;
+  color: #e2e8f0;
+  padding: 0;
+}
+
+.markdown-content blockquote {
+  border-left: 4px solid var(--color-brand);
+  background: var(--color-brand-light);
+  padding: 12px 16px;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  margin-bottom: 1.2em;
   font-style: italic;
-  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+/* Loading State (New Design) */
+.processing-indicator {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  width: fit-content;
   margin-top: 8px;
 }
 
 .stage-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--color-border);
-  border-top-color: var(--color-text-secondary);
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-border-active);
+  border-top-color: var(--color-brand);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
 
-/* ── Input Area (Floating) ── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.processing-text {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+/* ── Input Area (Floating & Modern) ── */
 .input-area {
   position: absolute;
-  bottom: 30px;
+  bottom: 40px;
   left: 0;
   right: 0;
   display: flex;
   justify-content: center;
-  padding: 0 20px;
-  z-index: 10;
-  background: transparent;
-  /* Transparent to let content scroll behind/fade */
+  padding: 0 24px;
+  z-index: 50;
   pointer-events: none;
-  /* Let clicks pass through outside the box */
 }
 
-/* Container to center and construct the 'box' */
 .input-wrapper {
-  background: white;
+  background: var(--color-bg-overlay);
+  backdrop-filter: var(--blur-md);
   width: 100%;
-  max-width: 800px;
-  border-radius: 16px;
+  max-width: 840px;
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-float);
-  border: 1px solid var(--color-border);
-  padding: 12px;
+  border: 1px solid var(--glass-border);
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   pointer-events: auto;
-  /* Re-enable clicks */
-  transition: all 0.2s ease;
+  transition: var(--transition-smooth);
 }
 
 .input-wrapper:focus-within {
-  box-shadow: 0 20px 30px -5px rgba(0, 0, 0, 0.15);
-  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-glow), 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border-color: var(--color-brand);
+  transform: translateY(-2px);
+  background: var(--color-bg-primary);
 }
 
-/* Top part: Input field */
 .input-top {
   display: flex;
   align-items: flex-start;
   width: 100%;
-  min-height: 24px;
 }
 
 .message-input {
@@ -275,12 +309,13 @@
   border: none;
   background: transparent;
   color: var(--color-text-primary);
-  font-size: 1rem;
+  font-size: 1.1rem;
+  line-height: 1.5;
   outline: none;
   resize: none;
   font-family: inherit;
-  min-height: 24px;
-  max-height: 200px;
+  min-height: 28px;
+  max-height: 240px;
   padding: 4px 0;
 }
 
@@ -288,72 +323,70 @@
   color: var(--color-text-muted);
 }
 
-/* Bottom part: Tools & Send */
+/* Tools & Send */
 .input-bottom {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 8px;
+  padding-top: 4px;
 }
 
 .input-tools {
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
 
 .tool-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: none;
-  background-color: var(--color-bg-secondary);
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background-color: var(--color-bg-tertiary);
   color: var(--color-text-secondary);
   font-size: 0.85rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: var(--transition-base);
 }
 
 .tool-btn:hover {
-  background-color: var(--color-bg-tertiary);
-  color: var(--color-text-primary);
+  background-color: var(--color-brand-light);
+  color: var(--color-brand-dark);
+  border-color: rgba(79, 70, 229, 0.2);
 }
 
-.tool-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-/* Send Button */
+/* Send Button - Iconic */
 .send-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background-color: var(--color-accent);
-  /* Black */
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: var(--gradient-brand);
   color: white;
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1rem;
-  transition: all 0.2s;
+  font-size: 1.2rem;
+  transition: var(--transition-base);
+  box-shadow: var(--shadow-md);
 }
 
 .send-btn:disabled {
-  background-color: var(--color-bg-tertiary);
+  background: var(--color-bg-tertiary);
   color: var(--color-text-muted);
-  cursor: default;
+  box-shadow: none;
+  cursor: not-allowed;
 }
 
 .send-btn:hover:not(:disabled) {
-  background-color: #374151;
+  transform: scale(1.05);
+  box-shadow: var(--shadow-glow);
 }
 
-/* File Chips inside Input */
+/* File Chips */
 .file-chips {
   display: flex;
   gap: 8px;
@@ -364,22 +397,47 @@
 .file-chip {
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: var(--color-bg-tertiary);
-  padding: 4px 10px;
-  border-radius: 6px;
+  gap: 8px;
+  background: var(--color-brand-light);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
   font-size: 0.85em;
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  color: var(--color-brand-dark);
+  font-weight: 500;
 }
 
 .remove-file {
   background: none;
   border: none;
-  color: var(--color-text-muted);
+  color: var(--color-brand-dark);
+  opacity: 0.6;
   cursor: pointer;
   font-size: 1.1em;
+  transition: opacity 0.2s;
 }
 
 .remove-file:hover {
+  opacity: 1;
   color: var(--color-error);
+}
+
+/* Mobile Adjustments */
+@media (max-width: 768px) {
+  .messages-area {
+    padding: 20px 16px 120px 16px;
+  }
+
+  .input-area {
+    bottom: 20px;
+    padding: 0 16px;
+  }
+
+  .example-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .empty-title {
+    font-size: 1.8rem;
+  }
 }

@@ -7,3 +7,8 @@
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: use --host to expose
+2:39:14 PM [vite] (client) hmr update /src/App.css
+2:39:35 PM [vite] (client) hmr update /src/components/Sidebar.css
+2:40:08 PM [vite] (client) hmr update /src/components/ChatInterface.css
+2:40:42 PM [vite] (client) hmr update /src/components/HomePage.css
+2:41:09 PM [vite] (client) hmr update /src/components/ChatInterface.jsx

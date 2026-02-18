@@ -1,0 +1,19 @@
+/app/backend/openrouter.py:4: FutureWarning:
+
+All support for the `google.generativeai` package has ended. It will no longer be receiving
+updates or bug fixes. Please switch to the `google.genai` package as soon as possible.
+See README for more details:
+
+https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/README.md
+
+  import google.generativeai as genai
+INFO:     Started server process [18230]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+Using LOCAL STORAGE (simulated database).
+INFO:     127.0.0.1:58222 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58232 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58232 - "OPTIONS /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58222 - "POST /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58222 - "GET /api/conversations/e002fdc5-fe93-437f-b97f-d377f84b35a1 HTTP/1.1" 200 OK

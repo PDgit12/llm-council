@@ -1,5 +1,108 @@
+:root {
+  /* =================================================================
+     DESIGN SYSTEM: "Parallels - Obsidian & Aether"
+     Modern, professional, with a hint of scientific depth.
+     ================================================================= */
+
+  /* ── Color Palette: Neutrals (Obsidian/Slate) ── */
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f9fafb; /* Slightly off-white for sidebars/cards */
+  --color-bg-tertiary: #f3f4f6;  /* Hover states, inputs */
+  --color-bg-overlay: rgba(255, 255, 255, 0.85);
+
+  --color-border: #e5e7eb;
+  --color-border-hover: #d1d5db;
+  --color-border-active: #9ca3af;
+
+  --color-text-primary: #111827;   /* Deep charcoal, not pure black */
+  --color-text-secondary: #4b5563; /* Muted slate */
+  --color-text-muted: #9ca3af;     /* Light gray text */
+  --color-text-inverted: #ffffff;
+
+  /* ── Color Palette: Brand (Aether/Indigo) ── */
+  --color-brand: #4f46e5;          /* Primary Indigo */
+  --color-brand-hover: #4338ca;
+  --color-brand-light: #e0e7ff;    /* Backgrounds for brand elements */
+  --color-brand-dark: #312e81;
+
+  --color-accent: #0f172a;         /* Slate-900 for high contrast actions */
+  --color-accent-hover: #1e293b;
+
+  --gradient-brand: linear-gradient(135deg, #4f46e5 0%, #8b5cf6 100%);
+  --gradient-accent: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%); /* Warm accent for landing */
+
+  /* ── Feedback Colors ── */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+
+  /* ── Typography ── */
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+  /* ── Spacing & Radius ── */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* ── Shadows (Layered) ── */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-float: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-glow: 0 0 15px rgba(79, 70, 229, 0.3);
+
+  /* ── Glassmorphism ── */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --blur-md: blur(12px);
+
+  /* ── Animations ── */
+  --transition-base: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Dark Mode Support (Optional/Future-proof) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg-primary: #0f172a;
+    --color-bg-secondary: #1e293b;
+    --color-bg-tertiary: #334155;
+    --color-bg-overlay: rgba(15, 23, 42, 0.85);
+
+    --color-border: #334155;
+    --color-border-hover: #475569;
+    --color-border-active: #64748b;
+
+    --color-text-primary: #f8fafc;
+    --color-text-secondary: #cbd5e1;
+    --color-text-muted: #94a3b8;
+    --color-text-inverted: #0f172a;
+
+    --color-brand-light: rgba(79, 70, 229, 0.2);
+    --color-accent: #f8fafc;         /* White for contrast in dark mode */
+    --color-accent-hover: #e2e8f0;
+
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --glass-bg: rgba(30, 41, 59, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.1);
+  }
+}
+
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .app {
@@ -9,5 +112,24 @@
   overflow: hidden;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-sans);
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-active);
 }
