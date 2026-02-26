@@ -237,11 +237,11 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
 # ── Conversations ──
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
-async def list_conversations(request: Request):
+async def list_conversations(request: Request, limit: int = 50, offset: int = 0):
     """List all conversations (metadata only)."""
     check_rate_limit(request, "global", RATE_LIMIT_GLOBAL)
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, storage.list_conversations)
+    return await loop.run_in_executor(None, storage.list_conversations, limit, offset)
 
 
 @app.post("/api/conversations", response_model=Conversation)

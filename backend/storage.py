@@ -4,7 +4,7 @@ import json
 import os
 import glob
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Union
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -110,11 +110,23 @@ def save_conversation(conversation: Dict[str, Any]):
     db.collection(CONVERSATIONS_COLLECTION).document(conversation['id']).update(conversation)
 
 
-def list_conversations() -> List[Dict[str, Any]]:
+def list_conversations(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
     """List all conversations (metadata only)."""
+    if db is None:
+        return []
+
     conversations = []
-    # Fetch all docs, but ideally we'd use pagination if there are many
-    docs = db.collection(CONVERSATIONS_COLLECTION).stream()
+    # Optimized query: projection, server-side sorting, and pagination
+    query = (
+        db.collection(CONVERSATIONS_COLLECTION)
+        .select(["id", "created_at", "title", "message_count"])
+        # Use server-side ordering for performance
+        .order_by("created_at", direction=firestore.Query.DESCENDING)
+        .offset(offset)
+        .limit(limit)
+    )
+
+    docs = query.stream()
     
     for doc in docs:
         data = doc.to_dict()
@@ -137,13 +149,11 @@ def list_conversations() -> List[Dict[str, Any]]:
 
         conversations.append({
             "id": data["id"],
-            "created_at": data["created_at"],
+            "created_at": data.get("created_at"),
             "title": data.get("title", "New Task"),
             "message_count": message_count
         })
 
-    # Sort by creation time, newest first
-    conversations.sort(key=lambda x: x["created_at"], reverse=True)
     return conversations
 
 

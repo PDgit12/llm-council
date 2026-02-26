@@ -4,6 +4,19 @@ import os
 import time
 from unittest.mock import MagicMock, patch
 
+# Mock dependencies before importing storage
+mock_firebase_admin = MagicMock()
+mock_credentials = MagicMock()
+mock_firestore = MagicMock()
+mock_google_cloud = MagicMock()
+
+sys.modules["firebase_admin"] = mock_firebase_admin
+sys.modules["firebase_admin.credentials"] = mock_credentials
+sys.modules["firebase_admin.firestore"] = mock_firestore
+sys.modules["google.cloud"] = mock_google_cloud
+sys.modules["google.cloud.firestore"] = MagicMock()
+sys.modules["dotenv"] = MagicMock()
+
 # Add backend to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -15,12 +28,6 @@ class MockDocumentSnapshot:
         self.id = doc_id
         self.reference = MagicMock()
         self.exists = True
-
-        # Simulate .get() on reference returning a FULL document snapshot
-        # For legacy test, this will be used to fetch the full doc.
-        # We need to ensure that when .get() is called, it returns a snapshot with the FULL data.
-        # But wait, self._data might be the projected data (missing fields).
-        # So we need a way to store the full data separately if this is a projected snapshot.
         self._full_data = data
 
     def to_dict(self):
@@ -28,6 +35,8 @@ class MockDocumentSnapshot:
 
 class StorageBenchmark(unittest.TestCase):
     def setUp(self):
+        storage.db = MagicMock()
+        self.mock_db = storage.db
         self.num_docs = 50
         self.message_count_per_doc = 20
         self.message_size = 500  # bytes
@@ -47,6 +56,7 @@ class StorageBenchmark(unittest.TestCase):
             full_data = self.full_data_template.copy()
             full_data["id"] = f"doc_{i}"
             full_data["title"] = f"Conversation {i}"
+            full_data["created_at"] = f"2023-01-{i%28+1:02d}T00:00:00"
 
             if has_message_count:
                 full_data["message_count"] = self.message_count_per_doc
@@ -72,32 +82,35 @@ class StorageBenchmark(unittest.TestCase):
             docs.append(doc)
         return docs
 
-    @patch('storage.db')
-    def test_list_conversations_optimized(self, mock_db):
+    def test_list_conversations_optimized(self):
         """
-        Scenario: Data has 'message_count'. Code uses .select().
+        Scenario: Data has 'message_count'. Code uses .select(), .order_by(), .limit(), .offset().
         Expectation: Fast, low bandwidth (simulated).
         """
         print("\n--- Benchmarking Optimized Scenario (New Data) ---")
 
         mock_docs = self.create_mock_docs(use_projection=True, has_message_count=True)
 
-        # Mock .select().stream()
-        mock_collection = MagicMock()
-        mock_db.collection.return_value = mock_collection
-        mock_query = MagicMock()
-        mock_collection.select.return_value = mock_query
-        mock_query.stream.return_value = iter(mock_docs)
+        # Mock chaining: db.collection().select().order_by().offset().limit().stream()
+        mock_collection = self.mock_db.collection.return_value
+        mock_select = mock_collection.select.return_value
+        mock_order_by = mock_select.order_by.return_value
+        mock_offset = mock_order_by.offset.return_value
+        mock_limit = mock_offset.limit.return_value
+        mock_limit.stream.return_value = iter(mock_docs)
 
         start_time = time.time()
-        conversations = storage.list_conversations()
+        conversations = storage.list_conversations(limit=20, offset=10)
         end_time = time.time()
 
-        # Verify select was called with correct fields
+        # Verify chaining
+        self.mock_db.collection.assert_called_with(storage.CONVERSATIONS_COLLECTION)
         mock_collection.select.assert_called_with(["id", "created_at", "title", "message_count"])
+        mock_select.order_by.assert_called()
+        mock_order_by.offset.assert_called_with(10)
+        mock_offset.limit.assert_called_with(20)
 
         # Calculate simulated bandwidth
-        # We fetched the projected docs.
         total_size = sum(len(str(d._data)) for d in mock_docs)
 
         print(f"Time taken: {end_time - start_time:.6f}s")
@@ -111,22 +124,22 @@ class StorageBenchmark(unittest.TestCase):
         for d in mock_docs:
             d.reference.get.assert_not_called()
 
-    @patch('storage.db')
-    def test_list_conversations_legacy_fallback(self, mock_db):
+    def test_list_conversations_legacy_fallback(self):
         """
         Scenario: Data missing 'message_count'. Code uses .select().
-        Expectation: Fallback triggers full fetch. High bandwidth/Slow.
+        Expectation: Fallback triggers full fetch.
         """
         print("\n--- Benchmarking Legacy Scenario (Fallback) ---")
 
         mock_docs = self.create_mock_docs(use_projection=True, has_message_count=False)
 
-        # Mock .select().stream()
-        mock_collection = MagicMock()
-        mock_db.collection.return_value = mock_collection
-        mock_query = MagicMock()
-        mock_collection.select.return_value = mock_query
-        mock_query.stream.return_value = iter(mock_docs)
+        # Mock chaining
+        mock_collection = self.mock_db.collection.return_value
+        mock_select = mock_collection.select.return_value
+        mock_order_by = mock_select.order_by.return_value
+        mock_offset = mock_order_by.offset.return_value
+        mock_limit = mock_offset.limit.return_value
+        mock_limit.stream.return_value = iter(mock_docs)
 
         start_time = time.time()
         conversations = storage.list_conversations()
@@ -136,11 +149,7 @@ class StorageBenchmark(unittest.TestCase):
         mock_collection.select.assert_called()
 
         # Calculate simulated bandwidth
-        # 1. Initial projected fetch
         initial_size = sum(len(str(d._data)) for d in mock_docs)
-
-        # 2. Fallback full fetch for each doc
-        # Each doc had .reference.get() called, returning full doc
         fallback_size = 0
         for d in mock_docs:
             d.reference.get.assert_called()
@@ -157,5 +166,4 @@ class StorageBenchmark(unittest.TestCase):
         self.assertEqual(conversations[0]['message_count'], self.message_count_per_doc)
 
 if __name__ == '__main__':
-    storage.db = MagicMock()
     unittest.main()
