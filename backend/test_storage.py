@@ -46,12 +46,16 @@ class TestStorage(unittest.TestCase):
         self.mock_collection.document.assert_called_once_with(conversation_id)
         self.mock_document.set.assert_called_once_with(result)
 
-    def test_create_conversation_db_not_initialized(self):
+    @patch('backend.storage._save_local')
+    def test_create_conversation_db_not_initialized(self, mock_save_local):
         """Test create_conversation when db is None."""
         storage.db = None
-        # It raises AttributeError because db is None, not RuntimeError
-        with self.assertRaises(AttributeError):
-            storage.create_conversation("any_id")
+        conversation_id = "test_conv_local"
+
+        result = storage.create_conversation(conversation_id)
+
+        self.assertEqual(result["id"], conversation_id)
+        mock_save_local.assert_called_once_with(result)
 
     def test_get_conversation_exists(self):
         """Test getting an existing conversation."""
@@ -92,12 +96,18 @@ class TestStorage(unittest.TestCase):
         # Verify
         self.assertIsNone(result)
 
-    def test_get_conversation_db_not_initialized(self):
+    @patch('backend.storage._load_local')
+    def test_get_conversation_db_not_initialized(self, mock_load_local):
         """Test get_conversation when db is None."""
         storage.db = None
-        # It raises AttributeError because db is None
-        with self.assertRaises(AttributeError):
-            storage.get_conversation("any_id")
+        conversation_id = "test_conv_local"
+        expected_data = {"id": conversation_id, "title": "Local Task"}
+        mock_load_local.return_value = expected_data
+
+        result = storage.get_conversation(conversation_id)
+
+        self.assertEqual(result, expected_data)
+        mock_load_local.assert_called_once_with(conversation_id)
 
     def test_save_conversation(self):
         """Test saving a conversation."""
@@ -112,6 +122,16 @@ class TestStorage(unittest.TestCase):
         self.mock_db.collection.assert_called_with("conversations")
         self.mock_collection.document.assert_called_with(conversation["id"])
         self.mock_document.update.assert_called_once_with(conversation)
+
+    @patch('backend.storage._save_local')
+    def test_save_conversation_db_not_initialized(self, mock_save_local):
+        """Test saving a conversation when db is None."""
+        storage.db = None
+        conversation = {"id": "test_conv_local", "title": "Local"}
+
+        storage.save_conversation(conversation)
+
+        mock_save_local.assert_called_once_with(conversation)
 
     def test_list_conversations(self):
         """Test listing conversations."""
@@ -135,6 +155,23 @@ class TestStorage(unittest.TestCase):
 
         self.assertEqual(result[0]["message_count"], 2)
         self.assertEqual(result[1]["message_count"], 0)
+
+    @patch('os.listdir')
+    @patch('backend.storage._load_local')
+    def test_list_conversations_db_not_initialized(self, mock_load_local, mock_listdir):
+        """Test listing conversations when db is None."""
+        storage.db = None
+        mock_listdir.return_value = ["c1.json", "c2.json", "other.txt"]
+        mock_load_local.side_effect = [
+            {"id": "c1", "created_at": "2023-01-01", "title": "T1", "messages": []},
+            {"id": "c2", "created_at": "2023-01-02", "title": "T2", "messages": [1]}
+        ]
+
+        result = storage.list_conversations()
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["id"], "c2") # Sorted by date
+        self.assertEqual(result[1]["id"], "c1")
 
     @patch('backend.storage.get_conversation')
     @patch('backend.storage.save_conversation')
@@ -160,18 +197,21 @@ class TestStorage(unittest.TestCase):
         initial_conv = {"id": conversation_id, "messages": []}
         mock_get.return_value = initial_conv
 
-        stage1 = [{"thought": "t1"}]
-        stage2 = [{"thought": "t2"}]
-        stage3 = {"final": "answer"}
+        result = {
+            "stage1": [{"thought": "t1"}],
+            "stage2": [{"thought": "t2"}],
+            "final_answer": "answer"
+        }
 
-        storage.add_assistant_message(conversation_id, stage1, stage2, stage3)
+        storage.add_assistant_message(conversation_id, result)
 
         self.assertEqual(len(initial_conv["messages"]), 1)
         msg = initial_conv["messages"][0]
         self.assertEqual(msg["role"], "assistant")
-        self.assertEqual(msg["stage1"], stage1)
-        self.assertEqual(msg["stage2"], stage2)
-        self.assertEqual(msg["stage3"], stage3)
+        self.assertEqual(msg["stage1"], result["stage1"])
+        self.assertEqual(msg["stage2"], result["stage2"])
+        self.assertEqual(msg["final_answer"], result["final_answer"])
+        self.assertEqual(msg["content"], result["final_answer"])
 
         mock_save.assert_called_once_with(initial_conv)
 
@@ -184,6 +224,21 @@ class TestStorage(unittest.TestCase):
 
         self.mock_collection.document.assert_called_with(conversation_id)
         self.mock_document.update.assert_called_once_with({"title": new_title})
+
+    @patch('backend.storage._load_local')
+    @patch('backend.storage._save_local')
+    def test_update_conversation_title_db_not_initialized(self, mock_save_local, mock_load_local):
+        """Test updating title when db is None."""
+        storage.db = None
+        conversation_id = "test_conv_local"
+        mock_load_local.return_value = {"id": conversation_id, "title": "Old"}
+
+        storage.update_conversation_title(conversation_id, "New")
+
+        mock_load_local.assert_called_once_with(conversation_id)
+        mock_save_local.assert_called_once()
+        saved_conv = mock_save_local.call_args[0][0]
+        self.assertEqual(saved_conv["title"], "New")
 
     @patch('backend.storage.get_conversation')
     @patch('backend.storage.save_conversation')
@@ -229,6 +284,19 @@ class TestStorage(unittest.TestCase):
         self.assertTrue(success)
         self.mock_collection.document.assert_called_with(conversation_id)
         self.mock_document.delete.assert_called_once()
+
+    @patch('os.path.exists')
+    @patch('os.remove')
+    def test_delete_conversation_db_not_initialized(self, mock_remove, mock_exists):
+        """Test deleting conversation when db is None."""
+        storage.db = None
+        conversation_id = "test_conv_local"
+        mock_exists.return_value = True
+
+        success = storage.delete_conversation(conversation_id)
+
+        self.assertTrue(success)
+        mock_remove.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()
