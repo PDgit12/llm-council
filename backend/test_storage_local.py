@@ -60,10 +60,13 @@ class TestLocalStorage(unittest.TestCase):
         self.assertEqual(conv['messages'][0]['content'], "Hello World")
 
         # Add Assistant Message (flexible)
+        result = {
+            "stage1": [{"content": "s1"}],
+            "final_answer": "Final Answer"
+        }
         storage.add_assistant_message(
             self.test_id,
-            stage1=[{"content": "s1"}],
-            final_answer="Final Answer"
+            result
         )
         conv = storage.get_conversation(self.test_id)
         self.assertEqual(len(conv['messages']), 2)

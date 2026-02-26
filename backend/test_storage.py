@@ -95,9 +95,9 @@ class TestStorage(unittest.TestCase):
     def test_get_conversation_db_not_initialized(self):
         """Test get_conversation when db is None."""
         storage.db = None
-        # It raises AttributeError because db is None
-        with self.assertRaises(AttributeError):
-            storage.get_conversation("any_id")
+        # It now returns None instead of raising AttributeError
+        result = storage.get_conversation("any_id")
+        self.assertIsNone(result)
 
     def test_save_conversation(self):
         """Test saving a conversation."""
@@ -160,18 +160,21 @@ class TestStorage(unittest.TestCase):
         initial_conv = {"id": conversation_id, "messages": []}
         mock_get.return_value = initial_conv
 
-        stage1 = [{"thought": "t1"}]
-        stage2 = [{"thought": "t2"}]
-        stage3 = {"final": "answer"}
+        result = {
+            "stage1": [{"thought": "t1"}],
+            "stage2": [{"thought": "t2"}],
+            "final_answer": "Final Answer"
+        }
 
-        storage.add_assistant_message(conversation_id, stage1, stage2, stage3)
+        storage.add_assistant_message(conversation_id, result)
 
         self.assertEqual(len(initial_conv["messages"]), 1)
         msg = initial_conv["messages"][0]
         self.assertEqual(msg["role"], "assistant")
-        self.assertEqual(msg["stage1"], stage1)
-        self.assertEqual(msg["stage2"], stage2)
-        self.assertEqual(msg["stage3"], stage3)
+        self.assertEqual(msg["stage1"], result["stage1"])
+        self.assertEqual(msg["stage2"], result["stage2"])
+        self.assertEqual(msg["final_answer"], result["final_answer"])
+        self.assertEqual(msg["content"], result["final_answer"])
 
         mock_save.assert_called_once_with(initial_conv)
 

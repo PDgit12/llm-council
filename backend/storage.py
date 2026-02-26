@@ -4,7 +4,7 @@ import json
 import os
 import glob
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Union
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -58,21 +58,6 @@ os.makedirs(DATA_DIR, exist_ok=True)
 def _get_local_path(conversation_id: str) -> str:
     return os.path.join(DATA_DIR, f"{conversation_id}.json")
 
-def _load_local(conversation_id: str) -> Optional[Dict[str, Any]]:
-    path = _get_local_path(conversation_id)
-    if os.path.exists(path):
-        try:
-            with open(path, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Error loading local conversation {conversation_id}: {e}")
-    return None
-
-def _save_local(conversation: Dict[str, Any]):
-    path = _get_local_path(conversation['id'])
-    with open(path, 'w') as f:
-        json.dump(conversation, f, indent=2)
-
 def create_conversation(conversation_id: str) -> Dict[str, Any]:
     """Create a new conversation."""
     conversation = {
@@ -91,14 +76,15 @@ def create_conversation(conversation_id: str) -> Dict[str, Any]:
 def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
     """Load a conversation."""
     if db:
-        doc = db.collection("conversations").document(conversation_id).get()
+        doc = db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).get()
         if doc.exists:
             return doc.to_dict()
         return None
 
-    doc = db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).get()
-    if doc.exists:
-        return doc.to_dict()
+    # Fallback to local if db is not initialized?
+    # Current implementation would crash if we don't have this check
+    # But for now we just return None if db is missing and we hit this
+    # to avoid the crash that was there before.
     return None
 
 
@@ -154,7 +140,7 @@ def count_conversations() -> int:
 
     try:
         # Use aggregation query for efficiency
-        query = db.collection("conversations")
+        query = db.collection(CONVERSATIONS_COLLECTION)
         count_query = query.count()
         snapshot = count_query.get()
 
@@ -189,7 +175,7 @@ def add_user_message(
     message = {
         "role": "user",
         "content": content,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
     
     if attachments:
@@ -286,14 +272,13 @@ def get_test_cases(conversation_id: str) -> List[Dict[str, Any]]:
 def delete_conversation(conversation_id: str) -> bool:
     """Delete a conversation."""
     if db:
-        db.collection("conversations").document(conversation_id).delete()
+        db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).delete()
         return True
-    else:
-        path = _get_local_path(conversation_id)
-        if os.path.exists(path):
-            os.remove(path)
-            return True
-        return False
 
-    db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).delete()
-    return True
+    # Fallback to local storage if Firestore is not initialized
+    path = _get_local_path(conversation_id)
+    if os.path.exists(path):
+        os.remove(path)
+        return True
+
+    return False
