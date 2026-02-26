@@ -4,7 +4,7 @@ import json
 import os
 import glob
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Union
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -84,63 +84,78 @@ def create_conversation(conversation_id: str) -> Dict[str, Any]:
         "test_cases": []
     }
 
-    db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).set(conversation)
+    if db:
+        db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).set(conversation)
+    else:
+        _save_local(conversation)
     return conversation
 
 
 def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
     """Load a conversation."""
     if db:
-        doc = db.collection("conversations").document(conversation_id).get()
+        doc = db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).get()
         if doc.exists:
             return doc.to_dict()
         return None
 
-    doc = db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).get()
-    if doc.exists:
-        return doc.to_dict()
-    return None
+    # Fallback to local storage
+    return _load_local(conversation_id)
 
 
 def save_conversation(conversation: Dict[str, Any]):
-    """Save a conversation to Firestore."""
-    if db is None:
-        return
-
-    db.collection(CONVERSATIONS_COLLECTION).document(conversation['id']).update(conversation)
+    """Save a conversation."""
+    if db:
+        db.collection(CONVERSATIONS_COLLECTION).document(conversation['id']).update(conversation)
+    else:
+        _save_local(conversation)
 
 
 def list_conversations() -> List[Dict[str, Any]]:
     """List all conversations (metadata only)."""
     conversations = []
-    # Fetch all docs, but ideally we'd use pagination if there are many
-    docs = db.collection(CONVERSATIONS_COLLECTION).stream()
     
-    for doc in docs:
-        data = doc.to_dict()
-        message_count = data.get("message_count")
+    if db:
+        # Fetch all docs from Firestore
+        docs = db.collection(CONVERSATIONS_COLLECTION).stream()
 
-        # Fallback for legacy documents without 'message_count'
-        if message_count is None:
-            # We must fetch the full doc (or at least messages) to count them.
-            # Using reference.get() fetches the full document.
-            try:
-                full_doc = doc.reference.get()
-                if full_doc.exists:
-                    full_data = full_doc.to_dict()
-                    message_count = len(full_data.get("messages", []))
-                else:
+        for doc in docs:
+            data = doc.to_dict()
+            message_count = data.get("message_count")
+
+            # Fallback for legacy documents without 'message_count'
+            if message_count is None:
+                try:
+                    full_doc = doc.reference.get()
+                    if full_doc.exists:
+                        full_data = full_doc.to_dict()
+                        message_count = len(full_data.get("messages", []))
+                    else:
+                        message_count = 0
+                except Exception as e:
+                    print(f"Error fetching legacy doc {doc.id}: {e}")
                     message_count = 0
-            except Exception as e:
-                print(f"Error fetching legacy doc {doc.id}: {e}")
-                message_count = 0
 
-        conversations.append({
-            "id": data["id"],
-            "created_at": data["created_at"],
-            "title": data.get("title", "New Task"),
-            "message_count": message_count
-        })
+            conversations.append({
+                "id": data["id"],
+                "created_at": data["created_at"],
+                "title": data.get("title", "New Task"),
+                "message_count": message_count
+            })
+    else:
+        # Fallback to local storage
+        if os.path.exists(DATA_DIR):
+            for filename in os.listdir(DATA_DIR):
+                if filename.endswith(".json"):
+                    conv_id = filename[:-5]
+                    data = _load_local(conv_id)
+                    if data:
+                        conversations.append({
+                            "id": data["id"],
+                            "created_at": data["created_at"],
+                            "title": data.get("title", "New Task"),
+                            "message_count": data.get("message_count", len(data.get("messages", [])))
+                        })
 
     # Sort by creation time, newest first
     conversations.sort(key=lambda x: x["created_at"], reverse=True)
@@ -148,32 +163,30 @@ def list_conversations() -> List[Dict[str, Any]]:
 
 
 def count_conversations() -> int:
-    """Count all conversations in Firestore."""
-    if db is None:
-        return 0
+    """Count all conversations."""
+    if db:
+        try:
+            # Use aggregation query for efficiency
+            query = db.collection(CONVERSATIONS_COLLECTION)
+            count_query = query.count()
+            snapshot = count_query.get()
 
-    try:
-        # Use aggregation query for efficiency
-        query = db.collection("conversations")
-        count_query = query.count()
-        snapshot = count_query.get()
+            # Handle different return types from SDK versions
+            if isinstance(snapshot, list) and len(snapshot) > 0:
+                first = snapshot[0]
+                if hasattr(first, 'value'):
+                    return int(first.value)
 
-        # Handle different return types from SDK versions
-        if isinstance(snapshot, list) and len(snapshot) > 0:
-            first = snapshot[0]
-            if isinstance(first, list) and len(first) > 0:
-                return int(first[0].value)
-            elif hasattr(first, 'value'):
-                return int(first.value)
-
-        # Fallback for unexpected structure
-        print(f"Unexpected aggregation result structure: {snapshot}")
-        return len(list_conversations())
-
-    except Exception as e:
-        print(f"Error counting conversations: {e}")
-        # Fallback to inefficient method
-        return len(list_conversations())
+            # Fallback for unexpected structure
+            return len(list_conversations())
+        except Exception as e:
+            print(f"Error counting conversations in Firestore: {e}")
+            return len(list_conversations())
+    else:
+        # Count local JSON files
+        if not os.path.exists(DATA_DIR):
+            return 0
+        return len([f for f in os.listdir(DATA_DIR) if f.endswith(".json")])
 
 
 def add_user_message(
@@ -189,7 +202,7 @@ def add_user_message(
     message = {
         "role": "user",
         "content": content,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
     
     if attachments:
@@ -231,10 +244,13 @@ def add_assistant_message(
 
 def update_conversation_title(conversation_id: str, title: str):
     """Update the title of a conversation."""
-    if db is None:
-        return
-
-    db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).update({"title": title})
+    if db:
+        db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).update({"title": title})
+    else:
+        conversation = get_conversation(conversation_id)
+        if conversation:
+            conversation["title"] = title
+            _save_local(conversation)
 
 
 def add_test_case(conversation_id: str, input_data: str, expected_output: str) -> Dict[str, Any]:
@@ -286,14 +302,16 @@ def get_test_cases(conversation_id: str) -> List[Dict[str, Any]]:
 def delete_conversation(conversation_id: str) -> bool:
     """Delete a conversation."""
     if db:
-        db.collection("conversations").document(conversation_id).delete()
+        db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).delete()
         return True
-    else:
-        path = _get_local_path(conversation_id)
-        if os.path.exists(path):
+
+    # Fallback to local storage
+    path = _get_local_path(conversation_id)
+    if os.path.exists(path):
+        try:
             os.remove(path)
             return True
-        return False
-
-    db.collection(CONVERSATIONS_COLLECTION).document(conversation_id).delete()
-    return True
+        except Exception as e:
+            print(f"Error deleting local conversation {conversation_id}: {e}")
+            return False
+    return False
