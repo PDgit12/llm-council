@@ -27,11 +27,17 @@ def migrate():
                 with open(path, 'r') as f:
                     data = json.load(f)
                 
+                # Add message_count for optimized listing
+                if "messages" in data:
+                    data["message_count"] = len(data["messages"])
+                else:
+                    data["message_count"] = 0
+
                 # Use storage methods to save to Firestore
                 print(f"Migrating {data['id']} ({data.get('title', 'Untitled')})...")
                 
                 # Check if it already exists to avoid duplicates (optional)
-                doc_ref = db.collection("conversations").document(data['id'])
+                doc_ref = db.collection(storage.CONVERSATIONS_COLLECTION).document(data['id'])
                 if doc_ref.get().exists:
                     print(f"  - Document {data['id']} already exists in Firestore. Overwriting.")
                 

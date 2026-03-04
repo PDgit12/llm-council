@@ -14,6 +14,13 @@ import uuid
 import json
 import time
 import os
+import sys
+
+# Ensure backend directory is in python path for imports to work
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Ensure data directory exists before imports that might rely on it
+os.makedirs("data/uploads", exist_ok=True)
 
 # Configure logging
 logging.basicConfig(
@@ -29,16 +36,37 @@ from . import storage
 from .config import (
     RATE_LIMIT_GLOBAL, RATE_LIMIT_MESSAGE, RATE_LIMIT_UPLOAD,
     MAX_MESSAGE_LENGTH, MAX_UPLOAD_SIZE, ALLOWED_UPLOAD_TYPES,
-    MAX_CONVERSATIONS
+    MAX_CONVERSATIONS, FIREBASE_PROJECT_ID
 )
+import re
+
+# ═══════════════════════════════════════════
+#  CORS CONFIGURATION
+# ═══════════════════════════════════════════
+
+allowed_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+# Construct regex for allowed origins (localhost, Firebase, Render)
+origin_regex_list = [
+    r"http://localhost:\d+",
+    r"http://127\.0\.0\.1:\d+",
+    r"https://parallels-.*\.onrender\.com",
+]
+
+if FIREBASE_PROJECT_ID:
+    origin_regex_list.append(rf"https://.*{re.escape(FIREBASE_PROJECT_ID)}.*\.web\.app")
+    origin_regex_list.append(rf"https://.*{re.escape(FIREBASE_PROJECT_ID)}.*\.firebaseapp\.com")
+
+allow_origin_regex = "|".join(origin_regex_list)
 
 app = FastAPI(title="Parallels API", description="Cross-Domain Analogy Engine")
 
 # Serve uploaded files statically
-os.makedirs("data/uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 
-# CORS for frontend
 # CORS for frontend
 app.add_middleware(
     CORSMiddleware,
@@ -165,6 +193,14 @@ def check_rate_limit(request: Request, category: str, limit: int):
     return remaining
 
 
+def validate_uuid(value: str):
+    """Validate that the string is a valid UUID."""
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid conversation ID format")
+
+
 # ═══════════════════════════════════════════
 #  REQUEST MODELS
 # ═══════════════════════════════════════════
@@ -234,6 +270,11 @@ async def root():
 
 # ── File Upload (rate-limited, size-limited, type-restricted) ──
 
+def _save_upload_file(filepath: str, content: bytes):
+    """Helper to save file content synchronously in a thread pool."""
+    with open(filepath, 'wb') as f:
+        f.write(content)
+
 @app.post("/api/upload")
 async def upload_file(request: Request, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     """Upload an image file (max 5 MB, images only)."""
@@ -254,8 +295,9 @@ async def upload_file(request: Request, file: UploadFile = File(...), user: dict
 
     filename = f"{uuid.uuid4()}{os.path.splitext(file.filename or '.png')[1]}"
     filepath = f"data/uploads/{filename}"
-    with open(filepath, 'wb') as f:
-        f.write(content)
+
+    # Run synchronous file I/O in a thread pool to avoid blocking the event loop
+    await asyncio.to_thread(_save_upload_file, filepath, content)
 
     return {
         "filename": filename,
@@ -295,6 +337,7 @@ async def create_conversation(request: Request, body: CreateConversationRequest,
 async def get_conversation(request: Request, conversation_id: str, user: dict = Depends(get_current_user)):
     """Get a specific exploration with all its messages."""
     check_rate_limit(request, "global", RATE_LIMIT_GLOBAL)
+    validate_uuid(conversation_id)
     conversation = storage.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Exploration not found")
@@ -305,6 +348,7 @@ async def get_conversation(request: Request, conversation_id: str, user: dict = 
 async def delete_conversation(request: Request, conversation_id: str, user: dict = Depends(get_current_user)):
     """Delete a specific exploration."""
     check_rate_limit(request, "global", RATE_LIMIT_GLOBAL)
+    validate_uuid(conversation_id)
     success = storage.delete_conversation(conversation_id)
     if not success:
         raise HTTPException(status_code=404, detail="Exploration not found")
@@ -317,12 +361,13 @@ async def delete_conversation(request: Request, conversation_id: str, user: dict
 async def send_message_stream(request: Request, conversation_id: str, body: SendMessageRequest, user: dict = Depends(get_current_user)):
     """Send a message and stream the 4-stage analogy pipeline via SSE."""
     check_rate_limit(request, "message", RATE_LIMIT_MESSAGE)
+    validate_uuid(conversation_id)
 
     conversation = storage.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Exploration not found")
 
-    is_first_message = len(conversation["messages"]) == 0
+    is_first_message = len(conversation.get("messages", [])) == 0
 
     async def event_generator():
         queue = asyncio.Queue()

@@ -111,12 +111,9 @@ function AuthenticatedApp() {
             break;
 
           case 'stage1_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage1 = event.data;
-              lastMsg.loading.stage1 = false;
-              return { ...prev, messages };
+            updateLastMessage((msg) => {
+              msg.stage1 = event.data;
+              msg.loading.stage1 = false;
             });
             break;
 
@@ -139,21 +136,15 @@ function AuthenticatedApp() {
             break;
 
           case 'stage2_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage2 = event.data;
-              lastMsg.loading.stage2 = false;
-              return { ...prev, messages };
+            updateLastMessage((msg) => {
+              msg.stage2 = event.data;
+              msg.loading.stage2 = false;
             });
             break;
 
           case 'stage3_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.stage3 = true;
-              return { ...prev, messages };
+            updateLastMessage((msg) => {
+              msg.loading.stage3 = true;
             });
             break;
 
@@ -167,21 +158,15 @@ function AuthenticatedApp() {
             break;
 
           case 'stage3_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage3 = event.data;
-              lastMsg.loading.stage3 = false;
-              return { ...prev, messages };
+            updateLastMessage((msg) => {
+              msg.stage3 = event.data;
+              msg.loading.stage3 = false;
             });
             break;
 
           case 'stage4_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.stage4 = true;
-              return { ...prev, messages };
+            updateLastMessage((msg) => {
+              msg.loading.stage4 = true;
             });
             break;
 
@@ -195,12 +180,9 @@ function AuthenticatedApp() {
             break;
 
           case 'stage4_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage4 = event.data;
-              lastMsg.loading.stage4 = false;
-              return { ...prev, messages };
+            updateLastMessage((msg) => {
+              msg.stage4 = event.data;
+              msg.loading.stage4 = false;
             });
             break;
 

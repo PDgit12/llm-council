@@ -39,9 +39,34 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         print(f"⚠️ PDF Extraction failed: {e}")
         return ""
 
+def _load_local_image(path: str) -> Optional[PIL.Image.Image]:
+    """Helper to load image if path exists."""
+    # Remove leading /uploads/ or / if present to get relative path from root
+    clean_path = path.lstrip('/')
+    if clean_path.startswith('uploads/'):
+        clean_path = os.path.join('data', clean_path)
+    elif not clean_path.startswith('data/'):
+        clean_path = os.path.join('data/uploads', os.path.basename(path))
+
+    try:
+        # Resolve absolute paths to prevent traversal
+        abs_path = os.path.abspath(clean_path)
+        data_dir = os.path.abspath('data')
+
+        # Security check: Ensure path is within data directory
+        if os.path.commonpath([data_dir, abs_path]) != data_dir:
+            return None
+
+        if os.path.exists(abs_path):
+            return PIL.Image.open(abs_path)
+    except Exception:
+        pass
+
+    return None
+
 async def query_model_direct_google(
     model_name: str,
-    messages: List[Dict[str, str]],
+    messages: List[Dict[str, Any]],
     timeout: float = MODEL_TIMEOUT
 ) -> Optional[Dict[str, Any]]:
     """Query Google Gemini API directly using the new google-genai SDK."""
@@ -256,6 +281,17 @@ async def query_model(
         "HTTP-Referer": "https://llm-council.vercel.app",
         "X-Title": "LLM Council",
     }
+
+    # Clean messages for OpenRouter (remove attachments/images if not supported directly via URL or base64)
+    # OpenRouter generally supports image URLs in content blocks for vision models.
+    # For simplicity, we'll just extract text unless we implement full image handling for OpenRouter.
+    clean_messages = []
+    for m in messages:
+        content = m.get('content', '')
+        # If attachments exist but we aren't handling them for OpenRouter yet, warn or ignore.
+        # Ideally, we'd upload them somewhere or convert to base64 data URLs.
+        clean_messages.append({"role": m['role'], "content": content})
+
     payload = {
         "model": model,
         "messages": formatted_messages,
