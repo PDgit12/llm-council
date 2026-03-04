@@ -16,6 +16,19 @@
 
 <body>
   <div id="root"></div>
+  <script>
+    window.onerror = function(message, source, lineno, colno, error) {
+      const root = document.getElementById('root');
+      root.innerHTML = `
+        <div style="color: red; padding: 20px; font-family: monospace; background: #fff;">
+          <h1>💥 Global Startup Error</h1>
+          <p><strong>Message:</strong> ${message}</p>
+          <p><strong>Source:</strong> ${source}:${lineno}:${colno}</p>
+          <p><strong>Stack:</strong> ${error ? error.stack : 'No stack trace'}</p>
+        </div>
+      `;
+    };
+  </script>
   <script type="module" src="/src/main.jsx"></script>
 </body>
 

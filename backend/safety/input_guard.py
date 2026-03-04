@@ -32,10 +32,19 @@ class InputSafetyGuard:
         r"suicide",
         r"self-harm",
     ]
+    
+    # Industry-standard PII detection (Simple regex baseline)
+    PII_PATTERNS = {
+        "Email Address": r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
+        "Phone Number": r"(\+\d{1,2}\s)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}",
+        "Credit Card": r"\b(?:\d[ -]*?){13,16}\b",
+        "SSN (US)": r"\b\d{3}-\d{2}-\d{4}\b",
+    }
 
     def __init__(self):
         self.jailbreak_regex = [re.compile(p, re.IGNORECASE) for p in self.JAILBREAK_PATTERNS]
         self.prohibited_regex = [re.compile(p, re.IGNORECASE) for p in self.PROHIBITED_TOPICS]
+        self.pii_regex = {name: re.compile(p) for name, p in self.PII_PATTERNS.items()}
 
     def sanitize(self, text: str) -> str:
         """
@@ -64,23 +73,51 @@ class InputSafetyGuard:
                     "category": "Prohibited Content"
                 }
         
-        # Additional checks can be added here (e.g., PI detection)
-        
         return {
             "safe": True,
             "reason": None,
             "category": "Safe"
         }
+        
+    def check_pii(self, text: str) -> Dict[str, Any]:
+        """
+        Detect PII in the text.
+        """
+        found_pii = []
+        for name, regex in self.pii_regex.items():
+            if regex.search(text):
+                found_pii.append(name)
+        
+        if found_pii:
+            return {
+                "safe": False,
+                "reason": f"Input contains potential PII: {', '.join(found_pii)}",
+                "category": "PII Detected"
+            }
+        
+        return {"safe": True}
 
     def validate(self, text: str) -> Dict[str, Any]:
         """
-        Full validation pipeline: Sanitize -> Policy Check.
+        Full validation pipeline: Sanitize -> Policy Check -> PII Check.
         """
         sanitized_input = self.sanitize(text)
         policy_result = self.check_policy(sanitized_input)
         
+        if not policy_result["safe"]:
+            return {
+                "original_input": text,
+                "sanitized_input": sanitized_input,
+                **policy_result
+            }
+            
+        pii_result = self.check_pii(sanitized_input)
+        
+        # Merge results, prioritizing the PII failure if it exists
+        final_result = pii_result if not pii_result["safe"] else policy_result
+        
         return {
             "original_input": text,
             "sanitized_input": sanitized_input,
-            **policy_result
+            **final_result
         }
