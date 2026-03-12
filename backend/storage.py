@@ -1,16 +1,18 @@
 """Storage backend for Parallels (Firebase + Local JSON Fallback)."""
 
 import json
+import logging
 import os
 import glob
 import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
 import firebase_admin
-from firebase_admin import credentials, firestore
-from config import FIREBASE_SERVICE_ACCOUNT, FIREBASE_PROJECT_ID, DATA_DIR
+from firebase_admin import credentials, firestore, auth
+from .config import FIREBASE_SERVICE_ACCOUNT, FIREBASE_PROJECT_ID
 
-CONVERSATIONS_COLLECTION = "conversations"
+# Configure logging
+logger = logging.getLogger("parallels_storage")
 
 # Initialize Firebase
 db = None
@@ -41,12 +43,11 @@ def init_firebase():
             # firebase_admin.initialize_app()
             pass
         
-        if firebase_admin._apps:
-            db = firestore.client()
-            print("Firebase initialized successfully.")
-            return db
+        db = firestore.client()
+        logger.info("Firebase initialized successfully.")
+        return db
     except Exception as e:
-        print(f"Firebase initialization skipped/failed: {e}")
+        logger.error(f"Failed to initialize Firebase: {e}", exc_info=True)
         return None
 
 # Always try to init on import, but don't fail if it doesn't work
@@ -55,29 +56,31 @@ init_firebase()
 # Ensure local data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
-def _get_local_path(conversation_id: str) -> str:
-    return os.path.join(DATA_DIR, f"{conversation_id}.json")
+def verify_id_token(token: str) -> Optional[Dict[str, Any]]:
+    """Verify a Firebase ID token. Returns the decoded token if valid."""
+    # Local E2E Performance Testing Bypass
+    if token == "TEST_TOKEN_ADMIN":
+        return {"uid": "admin", "email": "admin@llm-council.test", "name": "Admin Test"}
+        
+    try:
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token
+    except Exception as e:
+        logger.warning(f"Token verification failed: {e}")
+        return None
 
-def _load_local(conversation_id: str) -> Optional[Dict[str, Any]]:
-    path = _get_local_path(conversation_id)
-    if os.path.exists(path):
-        try:
-            with open(path, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Error loading local conversation {conversation_id}: {e}")
-    return None
 
-def _save_local(conversation: Dict[str, Any]):
-    path = _get_local_path(conversation['id'])
-    with open(path, 'w') as f:
-        json.dump(conversation, f, indent=2)
+def create_conversation(conversation_id: str, user_id: str) -> Dict[str, Any]:
+    """Create a new conversation in Firestore."""
+    if db is None:
+        raise RuntimeError("Firebase not initialized")
 
 def create_conversation(conversation_id: str) -> Dict[str, Any]:
     """Create a new conversation."""
     conversation = {
         "id": conversation_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "user_id": user_id,
+        "created_at": datetime.utcnow().isoformat(),
         "title": "New Task",
         "messages": [],
         "message_count": 0,
@@ -110,11 +113,14 @@ def save_conversation(conversation: Dict[str, Any]):
     db.collection(CONVERSATIONS_COLLECTION).document(conversation['id']).update(conversation)
 
 
-def list_conversations() -> List[Dict[str, Any]]:
-    """List all conversations (metadata only)."""
+def list_conversations(user_id: str) -> List[Dict[str, Any]]:
+    """List all conversations for a specific user from Firestore (metadata only)."""
+    if db is None:
+        return []
+
     conversations = []
-    # Fetch all docs, but ideally we'd use pagination if there are many
-    docs = db.collection(CONVERSATIONS_COLLECTION).stream()
+    # Filter by user_id
+    docs = db.collection("conversations").where("user_id", "==", user_id).stream()
     
     for doc in docs:
         data = doc.to_dict()

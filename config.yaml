@@ -1,0 +1,67 @@
+# Configuration for File Monitoring & GitHub Copilot Integration
+
+# Folder to monitor for new files
+watch_folder: "./test_folder"
+
+# File extensions to watch (empty = all files)
+watch_extensions:
+  - ".py"
+  - ".js"
+  - ".ts"
+  - ".json"
+  - ".yaml"
+  - ".yml"
+  - ".md"
+  - ".txt"
+
+# Files/folders to ignore
+ignore_patterns:
+  - "__pycache__"
+  - ".git"
+  - "node_modules"
+  - ".venv"
+  - "venv"
+  - ".env"
+  - "*.pyc"
+  - ".DS_Store"
+
+# GitHub Copilot Configuration
+github:
+  # GitHub Personal Access Token with copilot scope
+  token: "your_github_token_here"
+  # Model to use (gpt-4o, gpt-4o-mini, etc.)
+  model: "gpt-4o"
+  # Temperature for responses (0.0 - 1.0)
+  temperature: 0.7
+  # Max tokens in response
+  max_tokens: 4000
+
+# Recursive Agents Configuration
+recursive_agent:
+  # Enable recursive refinement
+  enabled: true
+  # Max critique-revision loops
+  max_loops: 3
+  # Similarity threshold for convergence (0.0 - 1.0)
+  similarity_threshold: 0.95
+
+# Task Prompt - This will be sent to Copilot with new files
+task_prompt: |
+  Analyze the following newly added files and provide:
+  1. A brief summary of what each file does
+  2. Potential issues or improvements
+  3. How these files fit into the overall project structure
+
+# Processing Options
+processing:
+  # Debounce time in seconds (wait for file to settle before processing)
+  debounce_seconds: 2
+  # Send notification when new files are detected
+  notify_on_new_files: true
+  # Store processed file list for restart persistence
+  state_file: ".processed_files.json"
+
+# Logging
+logging:
+  level: "INFO"
+  file: "copilot_connector.log"

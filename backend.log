@@ -1,0 +1,101 @@
+/Users/piyushdua/llm-council/.venv/lib/python3.10/site-packages/google/api_core/_python_version_support.py:275: FutureWarning: You are using a Python version (3.10.19) which Google will stop supporting in new releases of google.api_core once it reaches its end of life (2026-10-04). Please upgrade to the latest Python version, or at least Python 3.11, to continue receiving updates for google.api_core past that date.
+  warnings.warn(message, FutureWarning)
+2026-02-17 12:44:35,999 - parallels_storage - INFO - Firebase initialized successfully.
+INFO:     Started server process [35347]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     127.0.0.1:53862 - "GET /api/conversations HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:54065 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54067 - "GET /api/conversations HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:54231 - "GET /api/conversations HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:54231 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56973 - "OPTIONS /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56974 - "OPTIONS /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56977 - "OPTIONS /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56978 - "OPTIONS /api/conversations HTTP/1.1" 200 OK
+/Users/piyushdua/llm-council/.venv/lib/python3.10/site-packages/google/cloud/firestore_v1/base_collection.py:316: UserWarning: Detected filter using positional arguments. Prefer using the 'filter' keyword argument instead.
+  return query.where(field_path, op_string, value)
+INFO:     127.0.0.1:56973 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56973 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56978 - "OPTIONS /api/conversations/5a33fb06-545e-4a11-9c69-2cad31903c26 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56977 - "GET /api/conversations/5a33fb06-545e-4a11-9c69-2cad31903c26 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56973 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56973 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56978 - "GET /api/conversations/5a33fb06-545e-4a11-9c69-2cad31903c26 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56980 - "DELETE /api/conversations/5a33fb06-545e-4a11-9c69-2cad31903c26 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56980 - "POST /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56980 - "OPTIONS /api/conversations/1d1a291a-eeb2-4d7c-9db4-a446914cb149 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56980 - "GET /api/conversations/1d1a291a-eeb2-4d7c-9db4-a446914cb149 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56980 - "OPTIONS /api/conversations/1d1a291a-eeb2-4d7c-9db4-a446914cb149/message/stream HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56987 - "POST /api/conversations/1d1a291a-eeb2-4d7c-9db4-a446914cb149/message/stream HTTP/1.1" 200 OK
+2026-02-17 15:59:07,796 - backend.council - INFO - --- Fast Track Activated (simple) ---
+2026-02-17 15:59:07,942 - httpx - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 404 Not Found"
+2026-02-17 15:59:07,944 - backend.council - INFO - --- Fast Track Complete in 147ms ---
+2026-02-17 15:59:07,944 - parallels_api - INFO - [STREAM] Awaiting pipeline_task...
+2026-02-17 15:59:07,944 - parallels_api - INFO - [STREAM] pipeline_task result: <class 'dict'>
+2026-02-17 15:59:09,474 - httpx - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 404 Not Found"
+2026-02-17 15:59:09,476 - parallels_api - ERROR - Stream failed for 1d1a291a-eeb2-4d7c-9db4-a446914cb149: 'NoneType' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/piyushdua/llm-council/backend/main.py", line 378, in event_generator
+    title = await title_task
+  File "/Users/piyushdua/llm-council/backend/council.py", line 264, in generate_conversation_title
+    return (response.get("content") or "New Exploration").strip().strip('"')
+AttributeError: 'NoneType' object has no attribute 'get'
+⚠️ API Error 404 for microsoft/phi-4:free: Client error '404 Not Found' for url 'https://openrouter.ai/api/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+⚠️ API Error 404 for microsoft/phi-4:free: Client error '404 Not Found' for url 'https://openrouter.ai/api/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+INFO:     127.0.0.1:57168 - "OPTIONS /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57169 - "OPTIONS /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57171 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57171 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57169 - "OPTIONS /api/conversations/1d1a291a-eeb2-4d7c-9db4-a446914cb149 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57168 - "GET /api/conversations/1d1a291a-eeb2-4d7c-9db4-a446914cb149 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57266 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57266 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57269 - "GET /api/conversations/1d1a291a-eeb2-4d7c-9db4-a446914cb149 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57300 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57300 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57303 - "GET /api/conversations/1d1a291a-eeb2-4d7c-9db4-a446914cb149 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57525 - "DELETE /api/conversations/1d1a291a-eeb2-4d7c-9db4-a446914cb149 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57543 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57543 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57577 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57577 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57585 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57585 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57685 - "OPTIONS /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57686 - "OPTIONS /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57685 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57685 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57699 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57699 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57836 - "OPTIONS /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57836 - "POST /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57836 - "OPTIONS /api/conversations/b0d31596-13f0-4abf-a44a-157239253fb7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57838 - "GET /api/conversations/b0d31596-13f0-4abf-a44a-157239253fb7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57846 - "OPTIONS /api/conversations/b0d31596-13f0-4abf-a44a-157239253fb7/message/stream HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57846 - "POST /api/conversations/b0d31596-13f0-4abf-a44a-157239253fb7/message/stream HTTP/1.1" 200 OK
+2026-02-17 22:11:23,099 - backend.council - INFO - --- Parallel Phase: Exploration & Technical Tasking (complex) ---
+2026-02-17 22:11:23,361 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-02-17 22:11:23,425 - httpx - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-17 22:11:23,427 - httpx - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 404 Not Found"
+2026-02-17 22:11:23,610 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-pro-exp-02-05:generateContent "HTTP/1.1 403 Forbidden"
+2026-02-17 22:11:23,726 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-02-17 22:11:23,879 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent "HTTP/1.1 403 Forbidden"
+2026-02-17 22:11:23,891 - httpx - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 404 Not Found"
+2026-02-17 22:11:23,906 - httpx - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-17 22:11:24,141 - httpx - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 404 Not Found"
+2026-02-17 22:11:24,316 - httpx - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 404 Not Found"
+2026-02-17 22:11:24,317 - backend.council - WARNING - [COUNCIL] Parallel phase failed. Returning direct fallback.
+2026-02-17 22:11:24,475 - httpx - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-17 22:11:24,532 - parallels_api - INFO - [STREAM] Awaiting pipeline_task...
+2026-02-17 22:11:24,532 - parallels_api - INFO - [STREAM] pipeline_task result: <class 'dict'>
+2026-02-17 22:11:24,533 - parallels_api - ERROR - Stream failed for b0d31596-13f0-4abf-a44a-157239253fb7: 'NoneType' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/piyushdua/llm-council/backend/main.py", line 378, in event_generator
+    title = await title_task
+  File "/Users/piyushdua/llm-council/backend/council.py", line 264, in generate_conversation_title
+    return (response.get("content") or "New Exploration").strip().strip('"')
+AttributeError: 'NoneType' object has no attribute 'get'

@@ -27,20 +27,21 @@ from config import (
 )
 from openrouter import query_model
 
-# Hardcoded IDs to ensure independent verification from config
+# Dynamic IDs from config
 MODELS = {
-    "General Reasoner (Gemma 3 27B)": "google/gemma-3-27b-it:free",
-    "Niche Specialist (DeepSeek R1)": "deepseek/deepseek-r1-0528:free",
-    "Broad Context (Llama 3.3 70B)": "meta-llama/llama-3.3-70b-instruct:free",
-    "Verifier (Trinity Large)": "arcee-ai/trinity-large-preview:free",
-    "Instructional (Gemma 3 12B)": "google/gemma-3-12b-it:free",
-    "Technical (Qwen 3 Coder)": "qwen/qwen3-coder:free",
-    "Refactorer (Nemotron 30B)": "nvidia/nemotron-3-nano-30b-a3b:free",
-    "Validator (StepFun Flash)": "stepfun/step-3.5-flash:free"
+    "General Reasoner (Stage 1/4/6)": MODEL_GENERAL_REASONER,
+    "Niche Specialist (Stage 1)": MODEL_NICHE_SPECIALIST,
+    "Broad Context (Stage 1/4)": MODEL_BROAD_CONTEXT,
+    "Verifier (Stage 2)": MODEL_GROUNDING_VERIFIER,
+    "Instructional (Stage 2/5)": MODEL_INSTRUCTIONAL_ANALYST,
+    "Technical (Stage 3)": MODEL_TECHNICAL_SPECIALIST,
+    "Refactorer (Stage 3)": MODEL_CODE_REFACTORER,
+    "Validator (Stage 5)": MODEL_VALIDATOR
 }
 
 async def verify_all():
-    print(f"🔍 Verifying {len(MODELS)} Council Models...\n")
+    print(f"\n🔍 Verifying 8 Council Roles (Powered by 6 Unique Models)...")
+    print(f"==========================================================\n")
     
     results = []
     

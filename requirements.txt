@@ -1,0 +1,15 @@
+# Core dependencies
+watchdog>=3.0.0
+PyYAML>=6.0
+requests>=2.31.0
+
+# OpenAI / LLM dependencies
+openai>=1.0.0
+# langchain-openai>=0.0.5  # Optional: uncomment if using LangChain
+
+# For better cosine similarity calculation
+numpy>=1.24.0
+
+# UI dependencies (optional - for web interface)
+streamlit>=1.28.0
+colorama>=0.4.6

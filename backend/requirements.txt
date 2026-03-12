@@ -3,7 +3,7 @@ uvicorn
 openai>=1.0.0
 python-dotenv
 httpx
-google-generativeai
+google-genai
 pydantic
 python-multipart
 Pillow
