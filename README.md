@@ -1,148 +1,65 @@
-# GitHub Copilot File Connector
+# Copilot Council
 
-A powerful CLI tool that monitors folders for new files and sends them to GitHub Copilot with customizable prompts. Built with the **recursive-agents** framework for self-improving AI responses.
+A CLI tool that monitors folders for new files and sends them to GitHub Copilot for automated code review and analysis. Uses incremental file tracking to only send new or modified files.
 
 ## Features
 
-- 📁 **Smart File Monitoring** - Only sends NEW files, not the whole folder
-- 🔄 **Incremental Processing** - Tracks processed files, detects changes
-- 🧠 **Recursive Agents** - Draft → Critique → Revision for better responses
-- ⚡ **Real-time Watching** - Monitors folder for changes automatically
-- 🎯 **Custom Prompts** - Configure what GitHub Copilot should do with your files
+- **Incremental Processing** - Only sends new/modified files, not the entire folder
+- **File Tracking** - Tracks processed files to avoid duplicate analysis
+- **GitHub Copilot CLI** - Uses the official `gh copilot` extension
+- **Watch Mode** - Automatically detects and processes new files
+- **Custom Prompts** - Configure what Copilot should analyze
+
+## Requirements
+
+- [GitHub CLI](https://cli.github.com/)
+- [Copilot CLI extension](https://docs.github.com/en/copilot/github-copilot-in-the-cli)
+- Python 3.8+
 
 ## Installation
 
 ```bash
-# Clone or download the project
-cd copilot-connector
+# Install GitHub CLI if needed
+brew install gh
 
-# Install dependencies
-pip install PyYAML requests
-
-# Make executable (optional)
-chmod +x run.sh
+# Verify Copilot extension
+gh copilot --version
 ```
 
 ## Quick Start
 
 ```bash
-# Step 1: Initialize configuration (interactive wizard)
-python main_cli.py init
-
-# Step 2: Scan a folder to see files
+# Scan a folder
 python main_cli.py scan ./my-project
 
-# Step 3: Send files to GitHub Copilot
-python main_cli.py send
+# Send new files to Copilot
+python main_cli.py send ./my-project -p "Review for bugs and security issues"
 
-# Step 4: Watch folder for new files (auto-send)
+# Watch folder (auto-send new files)
 python main_cli.py watch ./my-project
 ```
 
-## CLI Commands
+## Commands
 
 | Command | Description |
 |---------|-------------|
-| `init` | Interactive setup wizard |
-| `scan <folder>` | Scan folder and show files |
-| `send` | Send new files to Copilot |
-| `send --all` | Send ALL files (not just new) |
-| `send -p "..."` | Custom prompt |
-| `watch <folder>` | Watch for changes |
-| `status` | Check current status |
-| `reset` | Reset file tracking |
+| `scan <folder>` | List files in folder |
+| `send <folder> -p "prompt"` | Send new files to Copilot |
+| `send <folder> --all` | Send ALL files (ignore tracking) |
+| `watch <folder>` | Watch for new files |
+| `status` | Show tracking status |
+| `reset` | Clear file tracking |
 
 ## How It Works
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Your Project                         │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐   │
-│  │ file.py │  │ util.js │  │ app.ts │  │ data.json│   │
-│  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘   │
-│       │            │            │            │         │
-│       └────────────┴─────┬──────┴────────────┘         │
-│                          │                              │
-│                    File Scanner                         │
-│            (tracks processed files)                    │
-│                          │                              │
-│              ┌───────────┴───────────┐                  │
-│              │   NEW FILE DETECTED  │                  │
-│              └───────────┬───────────┘                  │
-│                          │                              │
-│              ┌───────────▼───────────┐                   │
-│              │   GitHub Copilot API │                   │
-│              └───────────┬───────────┘                   │
-│                          │                              │
-│              ┌───────────▼───────────┐                   │
-│              │  Recursive Refinement │                  │
-│              │  (Draft→Critique→Rev) │                  │
-│              └───────────┬───────────┘                   │
-│                          │                              │
-│                   📋 Response                           │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Recursive Agent Process
-
-1. **Draft** - Initial analysis from Copilot
-2. **Critique** - Identify gaps and improvements
-3. **Revision** - Enhanced response addressing critique
-4. **Convergence** - Repeat until stable
+1. Scanner detects files in the specified folder
+2. Compares against tracked files (stored in `.copilot_connector_state.json`)
+3. Only new/modified files are sent to Copilot CLI
+4. Response is displayed in terminal
 
 ## Configuration
 
-Configuration is saved to `copilot_connector.yaml`:
-
-```yaml
-watch_folder: ./my-project
-
-github:
-  token: ghp_xxxxx  # Your GitHub token
-  model: gpt-4o
-  temperature: 0.7
-
-recursive_agent:
-  enabled: true
-  max_loops: 2
-
-task_prompt: |
-  Review these files for bugs and improvements.
-```
-
-## Usage Examples
-
-### Code Review
-```bash
-python main_cli.py send -p "Review code for bugs, security issues, and improvements."
-```
-
-### Generate Documentation
-```bash
-python main_cli.py send -p "Generate documentation for these files."
-```
-
-### Watch Mode
-```bash
-# Watch folder, auto-send new files
-python main_cli.py watch ./my-project
-
-# Custom interval (10 seconds)
-python main_cli.py watch ./my-project --interval 10
-```
-
-## Requirements
-
-- Python 3.8+
-- GitHub account with Copilot access
-- GitHub Personal Access Token with `copilot` scope
-
-## Getting a GitHub Token
-
-1. Go to: https://github.com/settings/tokens
-2. Click "Generate new token (classic)"
-3. Select scopes: `copilot` and `repo`
-4. Generate and copy the token
+Edit `copilot_connector.yaml` to customize default folder, model selection, and task prompts.
 
 ## License
 

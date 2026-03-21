@@ -26,6 +26,7 @@ class FileScanner:
             "venv",
             ".env",
             ".pyc",
+            ".copilot_connector_state.json",
         ]
         self.state: Dict[str, dict] = {}
         self._load_state()
