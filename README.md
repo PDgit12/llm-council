@@ -56,7 +56,3 @@ python main_cli.py watch ./my-project
 2. Compares against tracked state in `.copilot_connector_state.json`
 3. Only new/modified files are sent to Copilot CLI
 4. Response is displayed in terminal
-
-## License
-
-MIT
